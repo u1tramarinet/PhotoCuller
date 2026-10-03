@@ -1,0 +1,10 @@
+.gradle/
+build/
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+.idea/
+.vscode/
