@@ -88,6 +88,11 @@ def trash_photo(req: TrashRequest):
     database.update_photo_status(req.file_path, "TRASHED")
     return {"status": "success", "file_path": req.file_path}
 
+@app.post("/database/reset")
+def reset_database():
+    database.reset_db()
+    return {"status": "success", "message": "Database reset successfully"}
+
 @app.websocket("/ws/scan")
 async def websocket_scan(websocket: WebSocket):
     await websocket.accept()
@@ -109,8 +114,13 @@ async def websocket_scan(websocket: WebSocket):
                 "message": message
             })
 
-        await scanner.scan_folders(rule_sets, progress_cb)
-        await websocket.send_json({"type": "complete", "message": "Scan finished successfully"})
+        total_hits = await scanner.scan_folders(rule_sets, progress_cb)
+        await websocket.send_json({
+            "type": "complete",
+            "current": total_hits,
+            "total": total_hits,
+            "message": f"スキャン完了 (検出: {total_hits}件)"
+        })
     except WebSocketDisconnect:
         print("Scan WebSocket disconnected")
     except Exception as e:

@@ -149,3 +149,10 @@ def update_photo_status(file_path: str, status: str):
     cursor.execute("UPDATE photos SET status = ? WHERE file_path = ?", (status, file_path))
     conn.commit()
     conn.close()
+
+def reset_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM photos;")
+    conn.commit()
+    conn.close()

@@ -86,5 +86,10 @@ class TestBackend(unittest.TestCase):
         all_size_photos = database.get_photos(min_size=0)
         self.assertEqual(len(all_size_photos), 3)
 
+    def test_4_reset_db(self):
+        self.assertGreater(len(database.get_photos()), 0)
+        database.reset_db()
+        self.assertEqual(len(database.get_photos()), 0)
+
 if __name__ == "__main__":
     unittest.main()

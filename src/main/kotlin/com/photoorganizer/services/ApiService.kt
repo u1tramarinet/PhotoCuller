@@ -98,6 +98,15 @@ object ApiService {
         }
     }
 
+    suspend fun resetDatabase(): Boolean {
+        return try {
+            val response = client.post("$BASE_URL/database/reset")
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     fun startScan(ruleSets: List<ScanRuleSet>): Flow<ScanProgress> = flow {
         try {
             client.webSocket("$WS_URL/ws/scan") {

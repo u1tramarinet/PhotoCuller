@@ -283,6 +283,12 @@ fun MainApp() {
                                                 updateAndSaveRuleSets(ruleSets.filter { it.id != id })
                                             },
                                             onStartScan = {
+                                                // Reset scan progress state and banner before starting new scan
+                                                scanProgressCurrent = 0
+                                                scanProgressTotal = 0
+                                                scanProgressMessage = "スキャンを準備中..."
+                                                isBannerVisible = false
+
                                                 isScanning = true
                                                 isBannerVisible = true
                                                 coroutineScope.launch {
