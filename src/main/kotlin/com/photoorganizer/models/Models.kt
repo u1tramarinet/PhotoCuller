@@ -36,8 +36,18 @@ data class ScanProgress(
 )
 
 @Serializable
+data class FolderConfig(
+    val path: String,
+    @SerialName("file_filter_type") val fileFilterType: String = "ALL", // "ALL", "CUSTOM_EXT", "NAME_CONTAINS"
+    @SerialName("custom_extensions") val customExtensions: List<String> = emptyList(), // e.g. [".jpg", ".png"]
+    @SerialName("name_substring") val nameSubstring: String = "",
+    @SerialName("subfolder_mode") val subfolderMode: String = "ALL_SUBFOLDERS", // "ALL_SUBFOLDERS", "TOP_ONLY", "SELECT_SUBFOLDERS"
+    @SerialName("selected_subfolders") val selectedSubfolders: List<String> = emptyList()
+)
+
+@Serializable
 data class ScanRequest(
-    val folders: List<String>
+    val folders: List<FolderConfig>
 )
 
 @Serializable

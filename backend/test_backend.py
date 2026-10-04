@@ -28,6 +28,13 @@ class TestBackend(unittest.TestCase):
         cls.img2_path = os.path.join(cls.test_dir, "test2.jpg")
         shutil.copy(cls.img1_path, cls.img2_path)
 
+        # Create subfolder with another image
+        cls.sub_dir = os.path.join(cls.test_dir, "sub")
+        os.makedirs(cls.sub_dir, exist_ok=True)
+        cls.img3_path = os.path.join(cls.sub_dir, "sub_img.png")
+        img3 = Image.new('RGB', (100, 100), color = 'blue')
+        img3.save(cls.img3_path)
+
     @classmethod
     def tearDownClass(cls):
         shutil.rmtree(cls.test_dir, ignore_errors=True)
@@ -40,13 +47,18 @@ class TestBackend(unittest.TestCase):
         async def mock_scan():
             async def cb(cur, tot, msg):
                 pass
-            await scanner.scan_folders([self.test_dir], cb)
+            cfg = {
+                "path": self.test_dir,
+                "file_filter_type": "ALL",
+                "subfolder_mode": "ALL_SUBFOLDERS"
+            }
+            await scanner.scan_folders([cfg], cb)
 
         import asyncio
         asyncio.run(mock_scan())
 
         photos = database.get_photos()
-        self.assertEqual(len(photos), 2)
+        self.assertEqual(len(photos), 3)
 
         duplicates = database.get_exact_duplicates()
         self.assertEqual(len(duplicates), 1)

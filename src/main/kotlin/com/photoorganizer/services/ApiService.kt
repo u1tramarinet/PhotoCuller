@@ -1,6 +1,7 @@
 package com.photoorganizer.services
 
 import com.photoorganizer.models.DuplicateGroup
+import com.photoorganizer.models.FolderConfig
 import com.photoorganizer.models.Photo
 import com.photoorganizer.models.ScanProgress
 import com.photoorganizer.models.TrashRequest
@@ -85,7 +86,7 @@ object ApiService {
         }
     }
 
-    fun startScan(folders: List<String>): Flow<ScanProgress> = flow {
+    fun startScan(folders: List<FolderConfig>): Flow<ScanProgress> = flow {
         try {
             client.webSocket("$WS_URL/ws/scan") {
                 val payload = json.encodeToString(mapOf("folders" to folders))

@@ -37,4 +37,21 @@ class ModelsTest {
         assertEquals(100, decoded.total)
         assertEquals("Scanning", decoded.message)
     }
+
+    @Test
+    fun testFolderConfigSerialization() {
+        val config = FolderConfig(
+            path = "/photos",
+            fileFilterType = "CUSTOM_EXT",
+            customExtensions = listOf("jpg", "png"),
+            subfolderMode = "TOP_ONLY"
+        )
+        val encoded = json.encodeToString(config)
+        val decoded = json.decodeFromString<FolderConfig>(encoded)
+
+        assertEquals("/photos", decoded.path)
+        assertEquals("CUSTOM_EXT", decoded.fileFilterType)
+        assertEquals(listOf("jpg", "png"), decoded.customExtensions)
+        assertEquals("TOP_ONLY", decoded.subfolderMode)
+    }
 }
