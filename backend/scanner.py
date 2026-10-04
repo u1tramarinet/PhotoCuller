@@ -5,6 +5,7 @@ import asyncio
 from typing import List, Dict, Any, Callable, Optional, Union
 from PIL import Image, ExifTags
 import cv2
+import numpy as np
 import imagehash
 from database import upsert_photo, get_connection
 
@@ -22,7 +23,9 @@ def compute_xxhash_or_sha256(filepath: str) -> str:
 
 def calculate_blur_score(filepath: str) -> float:
     try:
-        image = cv2.imread(filepath)
+        # Use np.fromfile + cv2.imdecode to safely read non-ASCII/Japanese paths on Windows
+        image_bytes = np.fromfile(filepath, dtype=np.uint8)
+        image = cv2.imdecode(image_bytes, cv2.IMREAD_COLOR)
         if image is None:
             return 0.0
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

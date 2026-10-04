@@ -37,7 +37,7 @@ import javax.imageio.ImageIO
 import javax.swing.JFileChooser
 
 enum class NavItem(val title: String) {
-    FOLDERS("フォルダ管理"),
+    FOLDERS("ルール設定"),
     PHOTOS("写真ギャラリー"),
     DUPLICATES("重複写真"),
     BLUR("ピンボケ・ブレ検出")
@@ -319,8 +319,8 @@ fun FolderManagementView(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("スキャンルール＆フォルダ管理", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("フォルダとフィルタ抽出ルールを多対1で紐づけて設定できます。", style = MaterialTheme.typography.bodyMedium)
+                Text("写真ファイルスキャンルール設定", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("対象フォルダと抽出フィルタの組み合わせをルールセットとして管理できます。", style = MaterialTheme.typography.bodyMedium)
             }
             Button(onClick = onAddRuleSet) {
                 Icon(Icons.Default.Add, contentDescription = null)
@@ -368,13 +368,14 @@ fun FolderManagementView(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun RuleSetCard(
     ruleSet: ScanRuleSet,
     onUpdateRuleSet: (ScanRuleSet) -> Unit,
     onRemoveRuleSet: () -> Unit
 ) {
+    var isExpanded by remember { mutableStateOf(true) }
     var manualPathInput by remember(ruleSet) { mutableStateOf("") }
     var customExtsText by remember(ruleSet) { mutableStateOf(ruleSet.customExtensions.joinToString(", ")) }
 
@@ -392,7 +393,7 @@ fun RuleSetCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Rule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(8.dp))
                 OutlinedTextField(
                     value = ruleSet.name,
@@ -402,168 +403,209 @@ fun RuleSetCard(
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.width(8.dp))
+                IconButton(onClick = { isExpanded = !isExpanded }) {
+                    Icon(
+                        if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "開閉"
+                    )
+                }
                 IconButton(onClick = onRemoveRuleSet) {
                     Icon(Icons.Default.Delete, contentDescription = "削除", tint = MaterialTheme.colorScheme.error)
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
-
-            // Section 1: Assigned Folder Paths (N:1)
-            Text("1. 対象フォルダパス一覧 (複数指定可)", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = manualPathInput,
-                    onValueChange = { manualPathInput = it },
-                    label = { Text("追加するフォルダの絶対パス") },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true
+            // Summary when collapsed
+            if (!isExpanded) {
+                Spacer(modifier = Modifier.height(8.dp))
+                val subfolderText = if (ruleSet.includeSubfolders) "ファイルと子フォルダ" else "ファイルのみ"
+                val filterText = when (ruleSet.fileFilterType) {
+                    "ALL" -> "すべてのファイル"
+                    "CUSTOM_EXT" -> "所定の拡張子 (${if (ruleSet.customExtensions.isEmpty()) "未指定" else ruleSet.customExtensions.joinToString(", ")})"
+                    "NAME_CONTAINS" -> "特定文字列 (「${ruleSet.nameSubstring}」を含む)"
+                    else -> "すべてのファイル"
+                }
+                Text(
+                    text = "対象フォルダ: ${ruleSet.folderPaths.size}件 | 範囲: $subfolderText | 抽出: $filterText",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(start = 32.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        val path = openDirectoryPickerDialog()
-                        if (path != null && !ruleSet.folderPaths.contains(path)) {
-                            onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths + path))
-                        }
-                    }
-                ) {
-                    Icon(Icons.Default.FolderOpen, contentDescription = null)
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("参照")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        val p = manualPathInput.trim()
-                        if (p.isNotBlank() && !ruleSet.folderPaths.contains(p)) {
-                            onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths + p))
-                            manualPathInput = ""
-                        }
-                    },
-                    enabled = manualPathInput.isNotBlank()
-                ) {
-                    Text("追加")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (ruleSet.folderPaths.isEmpty()) {
-                Text("※ フォルダが割り当てられていません。「参照」から追加してください。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             } else {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    ruleSet.folderPaths.forEach { path ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(path, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                            IconButton(
-                                onClick = { onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths - path)) },
-                                modifier = Modifier.size(24.dp)
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+                // Section 1: Assigned Folder Paths (N:1)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("対象フォルダパス一覧", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedTextField(
+                        value = manualPathInput,
+                        onValueChange = { manualPathInput = it },
+                        label = { Text("追加するフォルダの絶対パス") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val path = openDirectoryPickerDialog()
+                            if (path != null && !ruleSet.folderPaths.contains(path)) {
+                                onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths + path))
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("参照")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val p = manualPathInput.trim()
+                            if (p.isNotBlank() && !ruleSet.folderPaths.contains(p)) {
+                                onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths + p))
+                                manualPathInput = ""
+                            }
+                        },
+                        enabled = manualPathInput.isNotBlank()
+                    ) {
+                        Text("追加")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                if (ruleSet.folderPaths.isEmpty()) {
+                    Text("※ フォルダが割り当てられていません。「参照」から追加してください。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                } else {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        ruleSet.folderPaths.forEach { path ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(Icons.Default.Close, contentDescription = "削除", tint = MaterialTheme.colorScheme.outline)
+                                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.secondary)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(path, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                                IconButton(
+                                    onClick = { onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths - path)) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, contentDescription = "削除", tint = MaterialTheme.colorScheme.outline)
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Section 2: Subfolder Inclusion Setting
-            Text("2. 子フォルダ設定", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(
-                    checked = ruleSet.includeSubfolders,
-                    onCheckedChange = { checked ->
-                        onUpdateRuleSet(ruleSet.copy(includeSubfolders = checked))
+                // Section 2: Subfolder Inclusion Setting with Segmented Buttons
+                Text("子フォルダの対象設定", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
+
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = ruleSet.includeSubfolders,
+                        onClick = { onUpdateRuleSet(ruleSet.copy(includeSubfolders = true)) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                    ) {
+                        Text("ファイルと子フォルダ")
                     }
-                )
-                Text(if (ruleSet.includeSubfolders) "指定したフォルダ配下の全ての子フォルダを含む" else "直下のフォルダのみ (子フォルダを含まない)", style = MaterialTheme.typography.bodyMedium)
-            }
+                    SegmentedButton(
+                        selected = !ruleSet.includeSubfolders,
+                        onClick = { onUpdateRuleSet(ruleSet.copy(includeSubfolders = false)) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    ) {
+                        Text("ファイルのみ")
+                    }
+                }
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            // Section 3: File Filtering Setting
-            Text("3. 対象ファイルの抽出条件", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(4.dp))
+                // Section 3: File Filtering Setting with Segmented Buttons
+                Text("対象ファイルの抽出条件", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(4.dp))
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(
-                    selected = ruleSet.fileFilterType == "ALL",
-                    onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "ALL")) }
-                )
-                Text("すべての写真ファイル", style = MaterialTheme.typography.bodyMedium)
-            }
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    SegmentedButton(
+                        selected = ruleSet.fileFilterType == "ALL",
+                        onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "ALL")) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
+                    ) {
+                        Text("すべてのファイル")
+                    }
+                    SegmentedButton(
+                        selected = ruleSet.fileFilterType == "CUSTOM_EXT",
+                        onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "CUSTOM_EXT")) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
+                    ) {
+                        Text("所定の拡張子のみ")
+                    }
+                    SegmentedButton(
+                        selected = ruleSet.fileFilterType == "NAME_CONTAINS",
+                        onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "NAME_CONTAINS")) },
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+                    ) {
+                        Text("特定文字列を含む")
+                    }
+                }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(
-                    selected = ruleSet.fileFilterType == "CUSTOM_EXT",
-                    onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "CUSTOM_EXT")) }
-                )
-                Text("所定の拡張子のみ", style = MaterialTheme.typography.bodyMedium)
-            }
-
-            if (ruleSet.fileFilterType == "CUSTOM_EXT") {
-                Column(modifier = Modifier.padding(start = 32.dp, bottom = 8.dp)) {
-                    if (detectedExtensions.isNotEmpty()) {
-                        Text("割り当てフォルダ内の検出拡張子から選択:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            detectedExtensions.forEach { ext ->
-                                val isSelected = ruleSet.customExtensions.contains(ext)
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        val newExts = if (isSelected) ruleSet.customExtensions - ext else ruleSet.customExtensions + ext
-                                        customExtsText = newExts.joinToString(", ")
-                                        onUpdateRuleSet(ruleSet.copy(customExtensions = newExts))
-                                    },
-                                    label = { Text(".$ext") }
-                                )
+                if (ruleSet.fileFilterType == "CUSTOM_EXT") {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        if (detectedExtensions.isNotEmpty()) {
+                            Text("割り当てフォルダ内の検出拡張子から選択:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                detectedExtensions.forEach { ext ->
+                                    val isSelected = ruleSet.customExtensions.contains(ext)
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = {
+                                            val newExts = if (isSelected) ruleSet.customExtensions - ext else ruleSet.customExtensions + ext
+                                            customExtsText = newExts.joinToString(", ")
+                                            onUpdateRuleSet(ruleSet.copy(customExtensions = newExts))
+                                        },
+                                        label = { Text(".$ext") }
+                                    )
+                                }
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
 
+                        OutlinedTextField(
+                            value = customExtsText,
+                            onValueChange = { text ->
+                                customExtsText = text
+                                val list = text.split(",").map { it.trim().removePrefix(".") }.filter { it.isNotEmpty() }
+                                onUpdateRuleSet(ruleSet.copy(customExtensions = list))
+                            },
+                            label = { Text("拡張子の手入力 (カンマ区切り: jpg, png, webp)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                    }
+                }
+
+                if (ruleSet.fileFilterType == "NAME_CONTAINS") {
+                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
-                        value = customExtsText,
+                        value = ruleSet.nameSubstring,
                         onValueChange = { text ->
-                            customExtsText = text
-                            val list = text.split(",").map { it.trim().removePrefix(".") }.filter { it.isNotEmpty() }
-                            onUpdateRuleSet(ruleSet.copy(customExtensions = list))
+                            onUpdateRuleSet(ruleSet.copy(nameSubstring = text))
                         },
-                        label = { Text("拡張子の手入力 (カンマ区切り: jpg, png, webp)") },
+                        label = { Text("検索文字列 (例: IMG_)") },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
                 }
-            }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(
-                    selected = ruleSet.fileFilterType == "NAME_CONTAINS",
-                    onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "NAME_CONTAINS")) }
-                )
-                Text("ファイル名に特定の文字列を含む", style = MaterialTheme.typography.bodyMedium)
-            }
-
-            if (ruleSet.fileFilterType == "NAME_CONTAINS") {
-                OutlinedTextField(
-                    value = ruleSet.nameSubstring,
-                    onValueChange = { text ->
-                        onUpdateRuleSet(ruleSet.copy(nameSubstring = text))
-                    },
-                    label = { Text("検索文字列 (例: IMG_)") },
-                    modifier = Modifier.fillMaxWidth().padding(start = 32.dp, bottom = 8.dp),
-                    singleLine = true
-                )
             }
         }
     }

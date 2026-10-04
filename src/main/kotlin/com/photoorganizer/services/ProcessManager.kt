@@ -15,16 +15,16 @@ object ProcessManager {
         val pythonCmds = if (isWindows) listOf("python", "python3", "py") else listOf("python3", "python")
 
         val backendDir = File("backend")
-        var startedProcess: Process? = null
 
         for (cmd in pythonCmds) {
             try {
                 val pb = ProcessBuilder(cmd, "main.py")
                 pb.directory(backendDir)
-                pb.redirectErrorStream(true)
-                startedProcess = pb.start()
-                if (startedProcess.isAlive) {
-                    pythonProcess = startedProcess
+                pb.redirectOutput(ProcessBuilder.Redirect.INHERIT)
+                pb.redirectError(ProcessBuilder.Redirect.INHERIT)
+                val process = pb.start()
+                if (process.isAlive) {
+                    pythonProcess = process
                     break
                 }
             } catch (e: Exception) {
