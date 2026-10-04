@@ -30,8 +30,6 @@ import com.photoorganizer.models.FolderConfig
 import com.photoorganizer.models.Photo
 import com.photoorganizer.services.ApiService
 import kotlinx.coroutines.launch
-import java.awt.FileDialog
-import java.awt.Frame
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
@@ -293,6 +291,18 @@ private fun openDirectoryPickerDialog(): String? {
     }
 }
 
+fun getExtensionsInDirectory(folderPath: String): List<String> {
+    val dir = File(folderPath)
+    if (!dir.exists() || !dir.isDirectory) return emptyList()
+    val extensions = mutableSetOf<String>()
+    dir.walkTopDown().maxDepth(3).forEach { file ->
+        if (file.isFile && file.extension.isNotBlank()) {
+            extensions.add(file.extension.lowercase())
+        }
+    }
+    return extensions.sorted()
+}
+
 @Composable
 fun FolderManagementView(
     folders: List<FolderConfig>,
@@ -303,12 +313,12 @@ fun FolderManagementView(
     isScanning: Boolean
 ) {
     var manualPathInput by remember { mutableStateOf("") }
-    var folderToEdit by remember { mutableStateOf<FolderConfig?>(null) }
+    var expandedFolderPaths by remember { mutableStateOf(setOf<String>()) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("対象フォルダ管理", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("スキャン・整理対象となるローカルフォルダを登録してください。", style = MaterialTheme.typography.bodyMedium)
+        Text("スキャン・整理対象となるローカルフォルダを登録し、条件を設定してください。", style = MaterialTheme.typography.bodyMedium)
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -364,49 +374,20 @@ fun FolderManagementView(
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
                     items(folders) { cfg ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text(cfg.path, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                                    IconButton(onClick = { folderToEdit = cfg }) {
-                                        Icon(Icons.Default.Settings, contentDescription = "設定", tint = MaterialTheme.colorScheme.primary)
-                                    }
-                                    IconButton(onClick = { onRemoveFolder(cfg.path) }) {
-                                        Icon(Icons.Default.Delete, contentDescription = "削除", tint = MaterialTheme.colorScheme.error)
-                                    }
+                        val isExpanded = expandedFolderPaths.contains(cfg.path)
+                        InlineFolderCard(
+                            cfg = cfg,
+                            isExpanded = isExpanded,
+                            onToggleExpand = {
+                                expandedFolderPaths = if (isExpanded) {
+                                    expandedFolderPaths - cfg.path
+                                } else {
+                                    expandedFolderPaths + cfg.path
                                 }
-
-                                Spacer(modifier = Modifier.height(4.dp))
-
-                                val filterSummary = when (cfg.fileFilterType) {
-                                    "ALL" -> "すべての写真ファイル"
-                                    "CUSTOM_EXT" -> "拡張子指定: ${cfg.customExtensions.joinToString(", ")}"
-                                    "NAME_CONTAINS" -> "ファイル名指定: 「${cfg.nameSubstring}」を含む"
-                                    else -> "すべてのファイル"
-                                }
-
-                                val subfolderSummary = when (cfg.subfolderMode) {
-                                    "ALL_SUBFOLDERS" -> "全ての子フォルダを含む"
-                                    "TOP_ONLY" -> "このフォルダ直下のみ"
-                                    "SELECT_SUBFOLDERS" -> "指定した子フォルダのみ (${cfg.selectedSubfolders.size}個)"
-                                    else -> "全ての子フォルダ"
-                                }
-
-                                Text(
-                                    text = "対象ファイル: $filterSummary | サブフォルダ: $subfolderSummary",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                        }
+                            },
+                            onUpdateFolder = onUpdateFolder,
+                            onRemoveFolder = { onRemoveFolder(cfg.path) }
+                        )
                     }
                 }
             }
@@ -424,176 +405,248 @@ fun FolderManagementView(
             Text(if (isScanning) "スキャン中..." else "写真のスキャンを開始")
         }
     }
-
-    // Folder Settings Dialog
-    if (folderToEdit != null) {
-        FolderSettingsDialog(
-            folderConfig = folderToEdit!!,
-            onDismiss = { folderToEdit = null },
-            onSave = { updatedCfg ->
-                onUpdateFolder(updatedCfg)
-                folderToEdit = null
-            }
-        )
-    }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FolderSettingsDialog(
-    folderConfig: FolderConfig,
-    onDismiss: () -> Unit,
-    onSave: (FolderConfig) -> Unit
+fun InlineFolderCard(
+    cfg: FolderConfig,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onUpdateFolder: (FolderConfig) -> Unit,
+    onRemoveFolder: () -> Unit
 ) {
-    var fileFilterType by remember { mutableStateOf(folderConfig.fileFilterType) }
-    var customExtsText by remember { mutableStateOf(folderConfig.customExtensions.joinToString(", ")) }
-    var nameSubstring by remember { mutableStateOf(folderConfig.nameSubstring) }
-    var subfolderMode by remember { mutableStateOf(folderConfig.subfolderMode) }
-    var selectedSubfolders by remember { mutableStateOf(folderConfig.selectedSubfolders) }
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(cfg.path, modifier = Modifier.weight(1f), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
 
-    // List available subfolders in the target directory
-    val availableSubfolders = remember(folderConfig.path) {
-        val rootDir = File(folderConfig.path)
-        if (rootDir.exists() && rootDir.isDirectory) {
-            rootDir.listFiles { file -> file.isDirectory }?.map { it.name } ?: emptyList()
-        } else {
-            emptyList()
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("フォルダ設定: ${File(folderConfig.path).name}") },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                Text("対象ファイル設定", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = fileFilterType == "ALL",
-                        onClick = { fileFilterType = "ALL" }
-                    )
-                    Text("すべての写真ファイル", style = MaterialTheme.typography.bodyMedium)
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = fileFilterType == "CUSTOM_EXT",
-                        onClick = { fileFilterType = "CUSTOM_EXT" }
-                    )
-                    Text("所定の拡張子のみ", style = MaterialTheme.typography.bodyMedium)
-                }
-                if (fileFilterType == "CUSTOM_EXT") {
-                    OutlinedTextField(
-                        value = customExtsText,
-                        onValueChange = { customExtsText = it },
-                        label = { Text("拡張子 (カンマ区切り: jpg, png, webp)") },
-                        modifier = Modifier.fillMaxWidth().padding(start = 32.dp, bottom = 8.dp),
-                        singleLine = true
+                IconButton(onClick = onToggleExpand) {
+                    Icon(
+                        if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "設定展開",
+                        tint = MaterialTheme.colorScheme.primary
                     )
                 }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = fileFilterType == "NAME_CONTAINS",
-                        onClick = { fileFilterType = "NAME_CONTAINS" }
-                    )
-                    Text("ファイル名に特定の文字列を含む", style = MaterialTheme.typography.bodyMedium)
+                IconButton(onClick = onRemoveFolder) {
+                    Icon(Icons.Default.Delete, contentDescription = "削除", tint = MaterialTheme.colorScheme.error)
                 }
-                if (fileFilterType == "NAME_CONTAINS") {
-                    OutlinedTextField(
-                        value = nameSubstring,
-                        onValueChange = { nameSubstring = it },
-                        label = { Text("検索文字列 (例: IMG_)") },
-                        modifier = Modifier.fillMaxWidth().padding(start = 32.dp, bottom = 8.dp),
-                        singleLine = true
-                    )
+            }
+
+            // Summary text when collapsed
+            if (!isExpanded) {
+                val filterSummary = when (cfg.fileFilterType) {
+                    "ALL" -> "すべての写真ファイル"
+                    "CUSTOM_EXT" -> "拡張子: ${if (cfg.customExtensions.isEmpty()) "未設定" else cfg.customExtensions.joinToString(", ")}"
+                    "NAME_CONTAINS" -> "ファイル名指定: 「${cfg.nameSubstring}」を含む"
+                    else -> "すべてのファイル"
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("サブフォルダ階層設定", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = subfolderMode == "ALL_SUBFOLDERS",
-                        onClick = { subfolderMode = "ALL_SUBFOLDERS" }
-                    )
-                    Text("全ての子フォルダを含む", style = MaterialTheme.typography.bodyMedium)
+                val subfolderSummary = when (cfg.subfolderMode) {
+                    "ALL_SUBFOLDERS" -> "全ての子フォルダを含む"
+                    "TOP_ONLY" -> "このフォルダ直下のみ"
+                    "SELECT_SUBFOLDERS" -> "指定した子フォルダのみ (${cfg.selectedSubfolders.size}個)"
+                    else -> "全ての子フォルダ"
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = subfolderMode == "TOP_ONLY",
-                        onClick = { subfolderMode = "TOP_ONLY" }
-                    )
-                    Text("このフォルダ直下のみ (子フォルダを含まない)", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    text = "対象ファイル: $filterSummary | サブフォルダ: $subfolderSummary",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline,
+                    modifier = Modifier.padding(start = 36.dp, top = 2.dp)
+                )
+            } else {
+                // In-screen inline configuration controls
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+                var fileFilterType by remember(cfg) { mutableStateOf(cfg.fileFilterType) }
+                var customExts by remember(cfg) { mutableStateOf(cfg.customExtensions) }
+                var customExtsText by remember(cfg) { mutableStateOf(cfg.customExtensions.joinToString(", ")) }
+                var nameSubstring by remember(cfg) { mutableStateOf(cfg.nameSubstring) }
+                var subfolderMode by remember(cfg) { mutableStateOf(cfg.subfolderMode) }
+                var selectedSubfolders by remember(cfg) { mutableStateOf(cfg.selectedSubfolders) }
+
+                val detectedExtensions = remember(cfg.path) {
+                    getExtensionsInDirectory(cfg.path)
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = subfolderMode == "SELECT_SUBFOLDERS",
-                        onClick = { subfolderMode = "SELECT_SUBFOLDERS" }
-                    )
-                    Text("都度選択した子フォルダのみ含む", style = MaterialTheme.typography.bodyMedium)
-                }
-
-                if (subfolderMode == "SELECT_SUBFOLDERS") {
-                    if (availableSubfolders.isEmpty()) {
-                        Text(
-                            "※ 子フォルダは見つかりませんでした。",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.padding(start = 32.dp, top = 4.dp)
-                        )
+                val availableSubfolders = remember(cfg.path) {
+                    val rootDir = File(cfg.path)
+                    if (rootDir.exists() && rootDir.isDirectory) {
+                        rootDir.listFiles { file -> file.isDirectory }?.map { it.name } ?: emptyList()
                     } else {
-                        Column(modifier = Modifier.padding(start = 32.dp, top = 4.dp)) {
-                            Text("対象子フォルダを選択:", style = MaterialTheme.typography.labelMedium)
-                            availableSubfolders.forEach { subName ->
-                                val isChecked = selectedSubfolders.contains(subName)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Checkbox(
-                                        checked = isChecked,
-                                        onCheckedChange = { checked ->
-                                            selectedSubfolders = if (checked) {
-                                                selectedSubfolders + subName
-                                            } else {
-                                                selectedSubfolders - subName
+                        emptyList()
+                    }
+                }
+
+                fun triggerUpdate(
+                    newFilterType: String = fileFilterType,
+                    newCustomExts: List<String> = customExts,
+                    newNameSub: String = nameSubstring,
+                    newSubMode: String = subfolderMode,
+                    newSelectedSubs: List<String> = selectedSubfolders
+                ) {
+                    fileFilterType = newFilterType
+                    customExts = newCustomExts
+                    nameSubstring = newNameSub
+                    subfolderMode = newSubMode
+                    selectedSubfolders = newSelectedSubs
+
+                    onUpdateFolder(
+                        cfg.copy(
+                            fileFilterType = newFilterType,
+                            customExtensions = newCustomExts,
+                            nameSubstring = newNameSub,
+                            subfolderMode = newSubMode,
+                            selectedSubfolders = newSelectedSubs
+                        )
+                    )
+                }
+
+                Column(modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
+                    Text("1. 対象ファイルの抽出条件", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = fileFilterType == "ALL",
+                            onClick = { triggerUpdate(newFilterType = "ALL") }
+                        )
+                        Text("すべての写真ファイル", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = fileFilterType == "CUSTOM_EXT",
+                            onClick = { triggerUpdate(newFilterType = "CUSTOM_EXT") }
+                        )
+                        Text("所定の拡張子のみ", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    if (fileFilterType == "CUSTOM_EXT") {
+                        Column(modifier = Modifier.padding(start = 32.dp, bottom = 8.dp)) {
+                            if (detectedExtensions.isNotEmpty()) {
+                                Text("フォルダ内の検出拡張子から選択:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                Spacer(modifier = Modifier.height(4.dp))
+                                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    detectedExtensions.forEach { ext ->
+                                        val isSelected = customExts.contains(ext)
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = {
+                                                val newExts = if (isSelected) customExts - ext else customExts + ext
+                                                customExtsText = newExts.joinToString(", ")
+                                                triggerUpdate(newCustomExts = newExts)
+                                            },
+                                            label = { Text(".$ext") }
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
+                            OutlinedTextField(
+                                value = customExtsText,
+                                onValueChange = { text ->
+                                    customExtsText = text
+                                    val list = text.split(",").map { it.trim().removePrefix(".") }.filter { it.isNotEmpty() }
+                                    triggerUpdate(newCustomExts = list)
+                                },
+                                label = { Text("拡張子の手入力 (カンマ区切り: jpg, png, webp)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = fileFilterType == "NAME_CONTAINS",
+                            onClick = { triggerUpdate(newFilterType = "NAME_CONTAINS") }
+                        )
+                        Text("ファイル名に特定の文字列を含む", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    if (fileFilterType == "NAME_CONTAINS") {
+                        OutlinedTextField(
+                            value = nameSubstring,
+                            onValueChange = { text ->
+                                nameSubstring = text
+                                triggerUpdate(newNameSub = text)
+                            },
+                            label = { Text("検索文字列 (例: IMG_)") },
+                            modifier = Modifier.fillMaxWidth().padding(start = 32.dp, bottom = 8.dp),
+                            singleLine = true
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text("2. サブフォルダの対象範囲", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = subfolderMode == "ALL_SUBFOLDERS",
+                            onClick = { triggerUpdate(newSubMode = "ALL_SUBFOLDERS") }
+                        )
+                        Text("全ての子フォルダを含む", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = subfolderMode == "TOP_ONLY",
+                            onClick = { triggerUpdate(newSubMode = "TOP_ONLY") }
+                        )
+                        Text("このフォルダ直下のみ (子フォルダを含まない)", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = subfolderMode == "SELECT_SUBFOLDERS",
+                            onClick = { triggerUpdate(newSubMode = "SELECT_SUBFOLDERS") }
+                        )
+                        Text("都度選択した子フォルダのみ含む", style = MaterialTheme.typography.bodyMedium)
+                    }
+
+                    if (subfolderMode == "SELECT_SUBFOLDERS") {
+                        if (availableSubfolders.isEmpty()) {
+                            Text(
+                                "※ 子フォルダは見つかりませんでした。",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.padding(start = 32.dp, top = 4.dp)
+                            )
+                        } else {
+                            Column(modifier = Modifier.padding(start = 32.dp, top = 4.dp)) {
+                                Text("対象子フォルダを選択:", style = MaterialTheme.typography.labelMedium)
+                                availableSubfolders.forEach { subName ->
+                                    val isChecked = selectedSubfolders.contains(subName)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = isChecked,
+                                            onCheckedChange = { checked ->
+                                                val newSubs = if (checked) selectedSubfolders + subName else selectedSubfolders - subName
+                                                triggerUpdate(newSelectedSubs = newSubs)
                                             }
-                                        }
-                                    )
-                                    Text(subName, style = MaterialTheme.typography.bodySmall)
+                                        )
+                                        Text(subName, style = MaterialTheme.typography.bodySmall)
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val extsList = customExtsText.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                    onSave(
-                        folderConfig.copy(
-                            fileFilterType = fileFilterType,
-                            customExtensions = extsList,
-                            nameSubstring = nameSubstring.trim(),
-                            subfolderMode = subfolderMode,
-                            selectedSubfolders = selectedSubfolders
-                        )
-                    )
-                }
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            OutlinedButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
         }
-    )
+    }
 }
 
 @Composable
