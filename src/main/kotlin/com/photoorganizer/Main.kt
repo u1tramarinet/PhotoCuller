@@ -34,12 +34,12 @@ fun main() = application {
         onCloseRequest = {
             showExitDialog = true
         },
-        title = "Photo Organizer Windows Application",
+        title = "フォト管",
         state = windowState
     ) {
         MenuBar {
-            Menu("ファイル (File)") {
-                Item("終了 (Exit)", onClick = { showExitDialog = true })
+            Menu("ファイル") {
+                Item("終了", onClick = { showExitDialog = true })
             }
         }
 
@@ -50,7 +50,7 @@ fun main() = application {
                 AlertDialog(
                     onDismissRequest = { showExitDialog = false },
                     title = { Text("アプリの終了確認") },
-                    text = { Text("写真整理アプリを終了してもよろしいですか？") },
+                    text = { Text("フォト管を終了してもよろしいですか？") },
                     confirmButton = {
                         Button(onClick = handleExit) {
                             Text("終了する")

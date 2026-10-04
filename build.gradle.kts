@@ -58,7 +58,7 @@ compose.desktop {
         mainClass = "com.photoorganizer.MainKt"
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe)
-            packageName = "PhotoOrganizer"
+            packageName = "フォト管"
             packageVersion = "1.0.0"
         }
     }

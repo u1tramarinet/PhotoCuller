@@ -1,6 +1,5 @@
 package com.photoorganizer.ui
 
-import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.photoorganizer.models.DuplicateGroup
@@ -35,10 +35,10 @@ import java.util.*
 import javax.imageio.ImageIO
 
 enum class NavItem(val title: String) {
-    FOLDERS("Folder Management"),
-    PHOTOS("Photo Gallery"),
-    DUPLICATES("Duplicates"),
-    BLUR("Blur Detection")
+    FOLDERS("フォルダ管理"),
+    PHOTOS("写真ギャラリー"),
+    DUPLICATES("重複写真"),
+    BLUR("ピンボケ・ブレ検出")
 }
 
 @Composable
@@ -79,24 +79,26 @@ fun MainApp() {
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxHeight().padding(vertical = 16.dp, horizontal = 8.dp),
+                        modifier = Modifier.fillMaxHeight().fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
                         verticalArrangement = Arrangement.Top,
-                        horizontalAlignment = Alignment.Start
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = "Photo Organizer",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "フォト管",
+                            style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 24.dp, start = 8.dp)
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
                         )
 
                         NavigationRailItem(
                             selected = currentNav == NavItem.FOLDERS,
                             onClick = { currentNav = NavItem.FOLDERS },
                             icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                            label = { Text(NavItem.FOLDERS.title) },
-                            alwaysShowLabel = true
+                            label = { Text(NavItem.FOLDERS.title, textAlign = TextAlign.Center) },
+                            alwaysShowLabel = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -104,8 +106,9 @@ fun MainApp() {
                             selected = currentNav == NavItem.PHOTOS,
                             onClick = { currentNav = NavItem.PHOTOS; refreshPhotos() },
                             icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
-                            label = { Text(NavItem.PHOTOS.title) },
-                            alwaysShowLabel = true
+                            label = { Text(NavItem.PHOTOS.title, textAlign = TextAlign.Center) },
+                            alwaysShowLabel = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -113,8 +116,9 @@ fun MainApp() {
                             selected = currentNav == NavItem.DUPLICATES,
                             onClick = { currentNav = NavItem.DUPLICATES; refreshPhotos() },
                             icon = { Icon(Icons.Default.CopyAll, contentDescription = null) },
-                            label = { Text(NavItem.DUPLICATES.title) },
-                            alwaysShowLabel = true
+                            label = { Text(NavItem.DUPLICATES.title, textAlign = TextAlign.Center) },
+                            alwaysShowLabel = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -122,13 +126,14 @@ fun MainApp() {
                             selected = currentNav == NavItem.BLUR,
                             onClick = { currentNav = NavItem.BLUR; refreshPhotos() },
                             icon = { Icon(Icons.Default.BlurOn, contentDescription = null) },
-                            label = { Text(NavItem.BLUR.title) },
-                            alwaysShowLabel = true
+                            label = { Text(NavItem.BLUR.title, textAlign = TextAlign.Center) },
+                            alwaysShowLabel = true,
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }
 
-                Divider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
 
                 // Main Content Workspace
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
@@ -205,7 +210,7 @@ fun MainApp() {
 
                             // Photo Detail Inspector Pane
                             if (selectedPhoto != null) {
-                                Divider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                                HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
                                 PhotoDetailInspector(
                                     photo = selectedPhoto!!,
                                     onClose = { selectedPhoto = null },
@@ -243,7 +248,7 @@ fun ScanProgressBanner(isScanning: Boolean, current: Int, total: Int, message: S
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (isScanning) "Scanning in progress..." else "Scan Notification",
+                    text = if (isScanning) "スキャン処理中..." else "スキャン完了",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -254,7 +259,7 @@ fun ScanProgressBanner(isScanning: Boolean, current: Int, total: Int, message: S
             }
             if (total > 0 && isScanning) {
                 LinearProgressIndicator(
-                    progress = current.toFloat() / total.toFloat(),
+                    progress = { current.toFloat() / total.toFloat() },
                     modifier = Modifier.width(150.dp).height(8.dp).clip(RoundedCornerShape(4.dp))
                 )
             }
@@ -273,9 +278,9 @@ fun FolderManagementView(
     var newFolderPath by remember { mutableStateOf("") }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Target Folder Management", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("対象フォルダ管理", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
-        Text("Register local folders to scan and organize photo collections.", style = MaterialTheme.typography.bodyMedium)
+        Text("スキャン・整理対象となるローカルフォルダを登録してください。", style = MaterialTheme.typography.bodyMedium)
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -283,7 +288,7 @@ fun FolderManagementView(
             OutlinedTextField(
                 value = newFolderPath,
                 onValueChange = { newFolderPath = it },
-                label = { Text("Folder Absolute Path") },
+                label = { Text("フォルダの絶対パス") },
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
@@ -297,7 +302,7 @@ fun FolderManagementView(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Folder")
+                Text("フォルダを追加")
             }
         }
 
@@ -311,7 +316,7 @@ fun FolderManagementView(
         ) {
             if (folders.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("No target folders added yet.", style = MaterialTheme.typography.bodyMedium)
+                    Text("登録されたフォルダはありません。", style = MaterialTheme.typography.bodyMedium)
                 }
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(8.dp)) {
@@ -328,7 +333,7 @@ fun FolderManagementView(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(folder, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                                 IconButton(onClick = { onRemoveFolder(folder) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
+                                    Icon(Icons.Default.Delete, contentDescription = "削除", tint = MaterialTheme.colorScheme.error)
                                 }
                             }
                         }
@@ -346,7 +351,7 @@ fun FolderManagementView(
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text(if (isScanning) "Scanning..." else "Start Photos Scanning")
+            Text(if (isScanning) "スキャン中..." else "写真のスキャンを開始")
         }
     }
 }
@@ -359,14 +364,14 @@ fun PhotoGridView(
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Photo Gallery (${photos.size} items)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text("写真ギャラリー (${photos.size}枚)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         if (photos.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No photos found. Add folders and run scan.", style = MaterialTheme.typography.bodyLarge)
+                Text("写真が見つかりません。フォルダを追加してスキャンを実行してください。", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             LazyVerticalGrid(
@@ -412,7 +417,7 @@ fun PhotoCardItem(photo: Photo, isSelected: Boolean, onClick: () -> Unit) {
                     modifier = Modifier.align(Alignment.TopStart)
                 ) {
                     Text(
-                        text = "Score: ${photo.blurScore.toInt()}",
+                        text = "スコア: ${photo.blurScore.toInt()}",
                         color = Color.White,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
@@ -430,19 +435,19 @@ fun DuplicatesView(
     onTrashPhoto: (Photo) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Exact Duplicate Photos (${duplicates.size} groups)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("完全一致の重複写真 (${duplicates.size}グループ)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         if (duplicates.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No exact duplicate photos found.", style = MaterialTheme.typography.bodyLarge)
+                Text("重複している写真は見つかりませんでした。", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 items(duplicates) { group ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text("Hash: ${group.hash.take(16)}...", style = MaterialTheme.typography.titleSmall)
+                            Text("ハッシュ: ${group.hash.take(16)}...", style = MaterialTheme.typography.titleSmall)
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -455,7 +460,7 @@ fun DuplicatesView(
                                             onClick = { onTrashPhoto(photo) },
                                             modifier = Modifier.align(Alignment.TopEnd).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                                         ) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Trash", tint = Color.Red)
+                                            Icon(Icons.Default.Delete, contentDescription = "ゴミ箱へ移動", tint = Color.Red)
                                         }
                                     }
                                 }
@@ -475,12 +480,12 @@ fun BlurView(
     onTrashPhoto: (Photo) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Blur / Out-of-Focus Photos (${blurryPhotos.size} candidates)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("ピンボケ・ブレ写真候補 (${blurryPhotos.size}枚)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         if (blurryPhotos.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No low blur score photos detected.", style = MaterialTheme.typography.bodyLarge)
+                Text("ブレスコアの低い写真は検出されませんでした。", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
             LazyVerticalGrid(
@@ -519,9 +524,9 @@ fun PhotoDetailInspector(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Photo Inspector", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("写真の詳細情報", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             IconButton(onClick = onClose) {
-                Icon(Icons.Default.Close, contentDescription = "Close")
+                Icon(Icons.Default.Close, contentDescription = "閉じる")
             }
         }
 
@@ -536,14 +541,14 @@ fun PhotoDetailInspector(
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val dateStr = photo.takenAt?.let { dateFormat.format(Date(it * 1000L)) } ?: "N/A"
 
-        InspectorDetailRow("File Name", File(photo.filePath).name)
-        InspectorDetailRow("Path", photo.filePath)
-        InspectorDetailRow("Dimensions", "${photo.width ?: 0} x ${photo.height ?: 0}")
-        InspectorDetailRow("Size", "${photo.fileSize / 1024} KB")
-        InspectorDetailRow("Taken At", dateStr)
-        InspectorDetailRow("Blur Score", photo.blurScore?.let { String.format("%.2f", it) } ?: "N/A")
-        InspectorDetailRow("Exact Hash", photo.exactHash?.take(12) ?: "N/A")
-        InspectorDetailRow("pHash", photo.phash ?: "N/A")
+        InspectorDetailRow("ファイル名", File(photo.filePath).name)
+        InspectorDetailRow("パス", photo.filePath)
+        InspectorDetailRow("解像度", "${photo.width ?: 0} x ${photo.height ?: 0}")
+        InspectorDetailRow("ファイルサイズ", "${photo.fileSize / 1024} KB")
+        InspectorDetailRow("撮影日時", dateStr)
+        InspectorDetailRow("ブレスコア", photo.blurScore?.let { String.format("%.2f", it) } ?: "N/A")
+        InspectorDetailRow("完全一致ハッシュ", photo.exactHash?.take(12) ?: "N/A")
+        InspectorDetailRow("知覚ハッシュ(pHash)", photo.phash ?: "N/A")
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -554,7 +559,7 @@ fun PhotoDetailInspector(
         ) {
             Icon(Icons.Default.Delete, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
-            Text("Move to Trash")
+            Text("ゴミ箱へ移動")
         }
     }
 }
