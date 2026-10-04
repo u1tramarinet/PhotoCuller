@@ -29,6 +29,7 @@ import com.photoorganizer.models.DuplicateGroup
 import com.photoorganizer.models.Photo
 import com.photoorganizer.models.ScanRuleSet
 import com.photoorganizer.services.ApiService
+import com.photoorganizer.services.ConfigManager
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -60,7 +61,7 @@ fun getRuleSetValidationErrors(ruleSet: ScanRuleSet): List<String> {
 @Composable
 fun MainApp() {
     var currentNav by remember { mutableStateOf(NavItem.PHOTOS) }
-    var ruleSets by remember { mutableStateOf(listOf(ScanRuleSet(name = "ルールセット 1"))) }
+    var ruleSets by remember { mutableStateOf(ConfigManager.loadRuleSets()) }
     var photos by remember { mutableStateOf(listOf<Photo>()) }
     var duplicates by remember { mutableStateOf(listOf<DuplicateGroup>()) }
     var blurryPhotos by remember { mutableStateOf(listOf<Photo>()) }
@@ -68,11 +69,17 @@ fun MainApp() {
 
     // Scan State
     var isScanning by remember { mutableStateOf(false) }
+    var isBannerVisible by remember { mutableStateOf(false) }
     var scanProgressCurrent by remember { mutableStateOf(0) }
     var scanProgressTotal by remember { mutableStateOf(0) }
     var scanProgressMessage by remember { mutableStateOf("") }
 
     val coroutineScope = rememberCoroutineScope()
+
+    fun updateAndSaveRuleSets(newRuleSets: List<ScanRuleSet>) {
+        ruleSets = newRuleSets
+        ConfigManager.saveRuleSets(newRuleSets)
+    }
 
     fun refreshPhotos() {
         coroutineScope.launch {
@@ -155,12 +162,13 @@ fun MainApp() {
                 Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Scan Progress Indicator Bar
-                        if (isScanning || scanProgressMessage.isNotEmpty()) {
+                        if (isBannerVisible) {
                             ScanProgressBanner(
                                 isScanning = isScanning,
                                 current = scanProgressCurrent,
                                 total = scanProgressTotal,
-                                message = scanProgressMessage
+                                message = scanProgressMessage,
+                                onClose = { isBannerVisible = false }
                             )
                         }
 
@@ -171,16 +179,17 @@ fun MainApp() {
                                         ruleSets = ruleSets,
                                         onAddRuleSet = {
                                             val nextIndex = ruleSets.size + 1
-                                            ruleSets = ruleSets + ScanRuleSet(name = "ルールセット $nextIndex")
+                                            updateAndSaveRuleSets(ruleSets + ScanRuleSet(name = "ルールセット $nextIndex"))
                                         },
                                         onUpdateRuleSet = { updatedRs ->
-                                            ruleSets = ruleSets.map { if (it.id == updatedRs.id) updatedRs else it }
+                                            updateAndSaveRuleSets(ruleSets.map { if (it.id == updatedRs.id) updatedRs else it })
                                         },
                                         onRemoveRuleSet = { id ->
-                                            ruleSets = ruleSets.filter { it.id != id }
+                                            updateAndSaveRuleSets(ruleSets.filter { it.id != id })
                                         },
                                         onStartScan = {
                                             isScanning = true
+                                            isBannerVisible = true
                                             coroutineScope.launch {
                                                 ApiService.startScan(ruleSets).collect { progress ->
                                                     scanProgressCurrent = progress.current
@@ -250,7 +259,13 @@ fun MainApp() {
 }
 
 @Composable
-fun ScanProgressBanner(isScanning: Boolean, current: Int, total: Int, message: String) {
+fun ScanProgressBanner(
+    isScanning: Boolean,
+    current: Int,
+    total: Int,
+    message: String,
+    onClose: () -> Unit
+) {
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -262,6 +277,9 @@ fun ScanProgressBanner(isScanning: Boolean, current: Int, total: Int, message: S
         ) {
             if (isScanning) {
                 CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                Spacer(modifier = Modifier.width(12.dp))
+            } else {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(modifier = Modifier.width(12.dp))
             }
             Column(modifier = Modifier.weight(1f)) {
@@ -280,6 +298,10 @@ fun ScanProgressBanner(isScanning: Boolean, current: Int, total: Int, message: S
                     progress = { current.toFloat() / total.toFloat() },
                     modifier = Modifier.width(150.dp).height(8.dp).clip(RoundedCornerShape(4.dp))
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.Close, contentDescription = "閉じる")
             }
         }
     }
