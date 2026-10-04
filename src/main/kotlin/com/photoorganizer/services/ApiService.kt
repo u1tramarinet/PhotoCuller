@@ -1,9 +1,9 @@
 package com.photoorganizer.services
 
 import com.photoorganizer.models.DuplicateGroup
-import com.photoorganizer.models.FolderConfig
 import com.photoorganizer.models.Photo
 import com.photoorganizer.models.ScanProgress
+import com.photoorganizer.models.ScanRuleSet
 import com.photoorganizer.models.TrashRequest
 import io.ktor.client.*
 import io.ktor.client.call.*
@@ -86,10 +86,10 @@ object ApiService {
         }
     }
 
-    fun startScan(folders: List<FolderConfig>): Flow<ScanProgress> = flow {
+    fun startScan(ruleSets: List<ScanRuleSet>): Flow<ScanProgress> = flow {
         try {
             client.webSocket("$WS_URL/ws/scan") {
-                val payload = json.encodeToString(mapOf("folders" to folders))
+                val payload = json.encodeToString(mapOf("rule_sets" to ruleSets))
                 send(Frame.Text(payload))
 
                 for (frame in incoming) {

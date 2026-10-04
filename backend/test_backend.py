@@ -47,12 +47,13 @@ class TestBackend(unittest.TestCase):
         async def mock_scan():
             async def cb(cur, tot, msg):
                 pass
-            cfg = {
-                "path": self.test_dir,
+            rule_set = {
+                "name": "Test Rule",
+                "folder_paths": [self.test_dir],
                 "file_filter_type": "ALL",
-                "subfolder_mode": "ALL_SUBFOLDERS"
+                "include_subfolders": True
             }
-            await scanner.scan_folders([cfg], cb)
+            await scanner.scan_folders([rule_set], cb)
 
         import asyncio
         asyncio.run(mock_scan())

@@ -39,19 +39,21 @@ class ModelsTest {
     }
 
     @Test
-    fun testFolderConfigSerialization() {
-        val config = FolderConfig(
-            path = "/photos",
+    fun testScanRuleSetSerialization() {
+        val ruleSet = ScanRuleSet(
+            name = "テストルール",
+            folderPaths = listOf("/photos1", "/photos2"),
             fileFilterType = "CUSTOM_EXT",
             customExtensions = listOf("jpg", "png"),
-            subfolderMode = "TOP_ONLY"
+            includeSubfolders = false
         )
-        val encoded = json.encodeToString(config)
-        val decoded = json.decodeFromString<FolderConfig>(encoded)
+        val encoded = json.encodeToString(ruleSet)
+        val decoded = json.decodeFromString<ScanRuleSet>(encoded)
 
-        assertEquals("/photos", decoded.path)
+        assertEquals("テストルール", decoded.name)
+        assertEquals(listOf("/photos1", "/photos2"), decoded.folderPaths)
         assertEquals("CUSTOM_EXT", decoded.fileFilterType)
         assertEquals(listOf("jpg", "png"), decoded.customExtensions)
-        assertEquals("TOP_ONLY", decoded.subfolderMode)
+        assertEquals(false, decoded.includeSubfolders)
     }
 }

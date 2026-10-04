@@ -85,55 +85,36 @@ def is_file_matching_filter(file_name: str, filter_type: str, custom_exts: List[
 
     return True
 
-async def scan_folders(folder_configs: List[Any], progress_callback: Callable[[int, int, str], None]):
-    all_files = []
+async def scan_folders(rule_sets: List[Any], progress_callback: Callable[[int, int, str], None]):
+    all_files = set()
 
-    for cfg in folder_configs:
-        path = getattr(cfg, "path", None) or (cfg.get("path") if isinstance(cfg, dict) else str(cfg))
-        if not os.path.exists(path):
-            continue
+    for rs in rule_sets:
+        folder_paths = getattr(rs, "folder_paths", []) if hasattr(rs, "folder_paths") else rs.get("folder_paths", [])
+        filter_type = getattr(rs, "file_filter_type", "ALL") if hasattr(rs, "file_filter_type") else rs.get("file_filter_type", "ALL")
+        custom_exts = getattr(rs, "custom_extensions", []) if hasattr(rs, "custom_extensions") else rs.get("custom_extensions", [])
+        name_substr = getattr(rs, "name_substring", "") if hasattr(rs, "name_substring") else rs.get("name_substring", "")
+        include_subfolders = getattr(rs, "include_subfolders", True) if hasattr(rs, "include_subfolders") else rs.get("include_subfolders", True)
 
-        filter_type = getattr(cfg, "file_filter_type", "ALL") if hasattr(cfg, "file_filter_type") else cfg.get("file_filter_type", "ALL")
-        custom_exts = getattr(cfg, "custom_extensions", []) if hasattr(cfg, "custom_extensions") else cfg.get("custom_extensions", [])
-        name_substr = getattr(cfg, "name_substring", "") if hasattr(cfg, "name_substring") else cfg.get("name_substring", "")
-        subfolder_mode = getattr(cfg, "subfolder_mode", "ALL_SUBFOLDERS") if hasattr(cfg, "subfolder_mode") else cfg.get("subfolder_mode", "ALL_SUBFOLDERS")
-        selected_subfolders = getattr(cfg, "selected_subfolders", []) if hasattr(cfg, "selected_subfolders") else cfg.get("selected_subfolders", [])
+        for folder in folder_paths:
+            if not os.path.exists(folder):
+                continue
 
-        if subfolder_mode == "TOP_ONLY":
-            try:
-                for item in os.listdir(path):
-                    full_p = os.path.join(path, item)
-                    if os.path.isfile(full_p) and is_file_matching_filter(item, filter_type, custom_exts, name_substr):
-                        all_files.append(full_p)
-            except Exception as e:
-                print(f"Error listing top directory {path}: {e}")
+            if include_subfolders:
+                for root, _, files in os.walk(folder):
+                    for file in files:
+                        if is_file_matching_filter(file, filter_type, custom_exts, name_substr):
+                            all_files.add(os.path.join(root, file))
+            else:
+                try:
+                    for item in os.listdir(folder):
+                        full_p = os.path.join(folder, item)
+                        if os.path.isfile(full_p) and is_file_matching_filter(item, filter_type, custom_exts, name_substr):
+                            all_files.add(full_p)
+                except Exception as e:
+                    print(f"Error reading directory {folder}: {e}")
 
-        elif subfolder_mode == "SELECT_SUBFOLDERS":
-            # Direct files in target folder
-            try:
-                for item in os.listdir(path):
-                    full_p = os.path.join(path, item)
-                    if os.path.isfile(full_p) and is_file_matching_filter(item, filter_type, custom_exts, name_substr):
-                        all_files.append(full_p)
-            except Exception:
-                pass
-
-            # Selected subfolders
-            for sub in selected_subfolders:
-                target_sub = sub if os.path.isabs(sub) else os.path.join(path, sub)
-                if os.path.exists(target_sub):
-                    for root, _, files in os.walk(target_sub):
-                        for file in files:
-                            if is_file_matching_filter(file, filter_type, custom_exts, name_substr):
-                                all_files.append(os.path.join(root, file))
-
-        else: # ALL_SUBFOLDERS
-            for root, _, files in os.walk(path):
-                for file in files:
-                    if is_file_matching_filter(file, filter_type, custom_exts, name_substr):
-                        all_files.append(os.path.join(root, file))
-
-    total = len(all_files)
+    files_list = sorted(list(all_files))
+    total = len(files_list)
     await progress_callback(0, total, "写真ファイルを走査中...")
 
     conn = get_connection()
@@ -142,7 +123,7 @@ async def scan_folders(folder_configs: List[Any], progress_callback: Callable[[i
     existing_records = {row[0]: row[1] for row in cursor.fetchall()}
     conn.close()
 
-    for idx, filepath in enumerate(all_files, start=1):
+    for idx, filepath in enumerate(files_list, start=1):
         try:
             stat = os.stat(filepath)
             mtime = int(stat.st_mtime)

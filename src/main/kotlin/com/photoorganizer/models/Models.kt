@@ -36,18 +36,19 @@ data class ScanProgress(
 )
 
 @Serializable
-data class FolderConfig(
-    val path: String,
+data class ScanRuleSet(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String = "ルールセット",
+    @SerialName("folder_paths") val folderPaths: List<String> = emptyList(),
     @SerialName("file_filter_type") val fileFilterType: String = "ALL", // "ALL", "CUSTOM_EXT", "NAME_CONTAINS"
-    @SerialName("custom_extensions") val customExtensions: List<String> = emptyList(), // e.g. [".jpg", ".png"]
+    @SerialName("custom_extensions") val customExtensions: List<String> = emptyList(),
     @SerialName("name_substring") val nameSubstring: String = "",
-    @SerialName("subfolder_mode") val subfolderMode: String = "ALL_SUBFOLDERS", // "ALL_SUBFOLDERS", "TOP_ONLY", "SELECT_SUBFOLDERS"
-    @SerialName("selected_subfolders") val selectedSubfolders: List<String> = emptyList()
+    @SerialName("include_subfolders") val includeSubfolders: Boolean = true
 )
 
 @Serializable
 data class ScanRequest(
-    val folders: List<FolderConfig>
+    val ruleSets: List<ScanRuleSet>
 )
 
 @Serializable

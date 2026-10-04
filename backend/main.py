@@ -26,13 +26,14 @@ app.add_middleware(
 def startup_event():
     database.init_db()
 
-class FolderConfigModel(BaseModel):
-    path: str
+class ScanRuleSetModel(BaseModel):
+    id: Optional[str] = None
+    name: str = "ルールセット"
+    folder_paths: List[str] = Field(default_factory=list)
     file_filter_type: str = "ALL"  # "ALL", "CUSTOM_EXT", "NAME_CONTAINS"
     custom_extensions: List[str] = Field(default_factory=list)
     name_substring: str = ""
-    subfolder_mode: str = "ALL_SUBFOLDERS"  # "ALL_SUBFOLDERS", "TOP_ONLY", "SELECT_SUBFOLDERS"
-    selected_subfolders: List[str] = Field(default_factory=list)
+    include_subfolders: bool = True
 
 class TrashRequest(BaseModel):
     file_path: str
@@ -81,14 +82,12 @@ async def websocket_scan(websocket: WebSocket):
     try:
         data = await websocket.receive_text()
         request_data = json.loads(data)
-        folder_configs_raw = request_data.get("folders", [])
+        rule_sets_raw = request_data.get("rule_sets", [])
 
-        folder_configs = []
-        for fc in folder_configs_raw:
-            if isinstance(fc, str):
-                folder_configs.append(FolderConfigModel(path=fc))
-            elif isinstance(fc, dict):
-                folder_configs.append(FolderConfigModel(**fc))
+        rule_sets = []
+        for rs in rule_sets_raw:
+            if isinstance(rs, dict):
+                rule_sets.append(ScanRuleSetModel(**rs))
 
         async def progress_cb(current: int, total: int, message: str):
             await websocket.send_json({
@@ -98,7 +97,7 @@ async def websocket_scan(websocket: WebSocket):
                 "message": message
             })
 
-        await scanner.scan_folders(folder_configs, progress_cb)
+        await scanner.scan_folders(rule_sets, progress_cb)
         await websocket.send_json({"type": "complete", "message": "Scan finished successfully"})
     except WebSocketDisconnect:
         print("Scan WebSocket disconnected")
