@@ -34,6 +34,9 @@ object ApiService {
 
     suspend fun fetchPhotos(
         folderPath: String? = null,
+        extension: String? = null,
+        minSize: Long? = null,
+        maxSize: Long? = null,
         sortBy: String = "taken_at",
         order: String = "DESC",
         limit: Int = 500,
@@ -47,6 +50,15 @@ object ApiService {
                 parameter("offset", offset)
                 if (!folderPath.isNull_or_empty_str()) {
                     parameter("folder_path", folderPath)
+                }
+                if (!extension.isNull_or_empty_str()) {
+                    parameter("extension", extension)
+                }
+                if (minSize != null) {
+                    parameter("min_size", minSize)
+                }
+                if (maxSize != null) {
+                    parameter("max_size", maxSize)
                 }
             }.body()
         } catch (e: Exception) {
@@ -80,6 +92,15 @@ object ApiService {
                 contentType(ContentType.Application.Json)
                 setBody(TrashRequest(filePath))
             }
+            response.status.isSuccess()
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun resetDatabase(): Boolean {
+        return try {
+            val response = client.post("$BASE_URL/database/reset")
             response.status.isSuccess()
         } catch (e: Exception) {
             false

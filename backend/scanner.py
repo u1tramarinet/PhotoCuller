@@ -88,7 +88,7 @@ def is_file_matching_filter(file_name: str, filter_type: str, custom_exts: List[
 
     return True
 
-async def scan_folders(rule_sets: List[Any], progress_callback: Callable[[int, int, str], None]):
+async def scan_folders(rule_sets: List[Any], progress_callback: Callable[[int, int, str], None]) -> int:
     all_files = set()
 
     for rs in rule_sets:
@@ -164,3 +164,5 @@ async def scan_folders(rule_sets: List[Any], progress_callback: Callable[[int, i
                 await asyncio.sleep(0)
         except Exception as e:
             print(f"Error processing {filepath}: {e}")
+
+    return total

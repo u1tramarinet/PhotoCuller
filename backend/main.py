@@ -45,12 +45,24 @@ def health_check():
 @app.get("/photos")
 def get_photos(
     folder_path: Optional[str] = None,
-    sort_by: str = Query("taken_at", pattern="^(taken_at|modified_at|file_path|blur_score|file_size)$"),
+    extension: Optional[str] = None,
+    min_size: Optional[int] = None,
+    max_size: Optional[int] = None,
+    sort_by: str = Query("taken_at", pattern="^(taken_at|modified_at|file_path|file_name|blur_score|file_size)$"),
     order: str = Query("DESC", pattern="^(ASC|DESC|asc|desc)$"),
     limit: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0)
 ):
-    return database.get_photos(folder_path=folder_path, sort_by=sort_by, order=order, limit=limit, offset=offset)
+    return database.get_photos(
+        folder_path=folder_path,
+        extension=extension,
+        min_size=min_size,
+        max_size=max_size,
+        sort_by=sort_by,
+        order=order,
+        limit=limit,
+        offset=offset
+    )
 
 @app.get("/duplicates/exact")
 def get_exact_duplicates():
@@ -76,6 +88,11 @@ def trash_photo(req: TrashRequest):
     database.update_photo_status(req.file_path, "TRASHED")
     return {"status": "success", "file_path": req.file_path}
 
+@app.post("/database/reset")
+def reset_database():
+    database.reset_db()
+    return {"status": "success", "message": "Database reset successfully"}
+
 @app.websocket("/ws/scan")
 async def websocket_scan(websocket: WebSocket):
     await websocket.accept()
@@ -97,8 +114,13 @@ async def websocket_scan(websocket: WebSocket):
                 "message": message
             })
 
-        await scanner.scan_folders(rule_sets, progress_cb)
-        await websocket.send_json({"type": "complete", "message": "Scan finished successfully"})
+        total_hits = await scanner.scan_folders(rule_sets, progress_cb)
+        await websocket.send_json({
+            "type": "complete",
+            "current": total_hits,
+            "total": total_hits,
+            "message": f"スキャン完了 (検出: {total_hits}件)"
+        })
     except WebSocketDisconnect:
         print("Scan WebSocket disconnected")
     except Exception as e:

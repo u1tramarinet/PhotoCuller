@@ -66,7 +66,16 @@ def upsert_photo(photo_data: Dict[str, Any]):
     conn.commit()
     conn.close()
 
-def get_photos(folder_path: Optional[str] = None, sort_by: str = "taken_at", order: str = "DESC", limit: int = 500, offset: int = 0) -> List[Dict[str, Any]]:
+def get_photos(
+    folder_path: Optional[str] = None,
+    extension: Optional[str] = None,
+    min_size: Optional[int] = None,
+    max_size: Optional[int] = None,
+    sort_by: str = "taken_at",
+    order: str = "DESC",
+    limit: int = 500,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
     conn = get_connection()
     cursor = conn.cursor()
 
@@ -77,7 +86,29 @@ def get_photos(folder_path: Optional[str] = None, sort_by: str = "taken_at", ord
         query += " AND folder_path = ?"
         params.append(folder_path)
 
-    allowed_sorts = {"taken_at": "taken_at", "modified_at": "modified_at", "file_name": "file_path", "blur_score": "blur_score", "file_size": "file_size"}
+    if extension:
+        ext = extension.strip().lower()
+        if not ext.startswith("."):
+            ext = f".{ext}"
+        query += " AND LOWER(file_path) LIKE ?"
+        params.append(f"%{ext}")
+
+    if min_size is not None:
+        query += " AND file_size >= ?"
+        params.append(min_size)
+
+    if max_size is not None:
+        query += " AND file_size <= ?"
+        params.append(max_size)
+
+    allowed_sorts = {
+        "taken_at": "taken_at",
+        "modified_at": "modified_at",
+        "file_path": "file_path",
+        "file_name": "file_path",
+        "blur_score": "blur_score",
+        "file_size": "file_size"
+    }
     sort_column = allowed_sorts.get(sort_by, "taken_at")
     sort_order = "ASC" if order.upper() == "ASC" else "DESC"
 
@@ -116,5 +147,12 @@ def update_photo_status(file_path: str, status: str):
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("UPDATE photos SET status = ? WHERE file_path = ?", (status, file_path))
+    conn.commit()
+    conn.close()
+
+def reset_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM photos;")
     conn.commit()
     conn.close()

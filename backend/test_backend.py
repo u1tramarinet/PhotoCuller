@@ -39,11 +39,11 @@ class TestBackend(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.test_dir, ignore_errors=True)
 
-    def test_database_init_and_photos(self):
+    def test_1_database_init_and_photos(self):
         photos = database.get_photos()
         self.assertEqual(len(photos), 0)
 
-    def test_scan_and_exact_duplicates(self):
+    def test_2_scan_and_exact_duplicates(self):
         async def mock_scan():
             async def cb(cur, tot, msg):
                 pass
@@ -64,6 +64,32 @@ class TestBackend(unittest.TestCase):
         duplicates = database.get_exact_duplicates()
         self.assertEqual(len(duplicates), 1)
         self.assertEqual(len(duplicates[0]["photos"]), 2)
+
+    def test_3_filter_and_sort_photos(self):
+        # Filter by extension
+        jpg_photos = database.get_photos(extension="jpg")
+        self.assertTrue(all(p["file_path"].endswith(".jpg") for p in jpg_photos))
+        self.assertEqual(len(jpg_photos), 2)
+
+        png_photos = database.get_photos(extension=".png")
+        self.assertTrue(all(p["file_path"].endswith(".png") for p in png_photos))
+        self.assertEqual(len(png_photos), 1)
+
+        # Sort by file_name ASC / DESC
+        asc_photos = database.get_photos(sort_by="file_name", order="ASC")
+        desc_photos = database.get_photos(sort_by="file_name", order="DESC")
+        self.assertEqual(asc_photos[0]["file_path"], desc_photos[-1]["file_path"])
+
+        # Filter by size
+        small_photos = database.get_photos(max_size=10)
+        self.assertEqual(len(small_photos), 0)
+        all_size_photos = database.get_photos(min_size=0)
+        self.assertEqual(len(all_size_photos), 3)
+
+    def test_4_reset_db(self):
+        self.assertGreater(len(database.get_photos()), 0)
+        database.reset_db()
+        self.assertEqual(len(database.get_photos()), 0)
 
 if __name__ == "__main__":
     unittest.main()
