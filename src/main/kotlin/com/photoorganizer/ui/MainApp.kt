@@ -53,6 +53,44 @@ enum class NavItem(val title: String) {
     BLUR("ピンボケ・ブレ検出")
 }
 
+enum class SortField(val displayName: String, val key: String) {
+    TAKEN_AT("撮影日時", "taken_at"),
+    FILE_NAME("ファイル名", "file_name"),
+    FILE_SIZE("ファイルサイズ", "file_size"),
+    BLUR_SCORE("ブレスコア", "blur_score")
+}
+
+enum class SortOrder(val displayName: String, val key: String) {
+    DESC("降順 ▼", "DESC"),
+    ASC("昇順 ▲", "ASC")
+}
+
+enum class GroupByOption(val displayName: String) {
+    NONE("なし (フラット表示)"),
+    FOLDER("フォルダごと"),
+    EXTENSION("拡張子ごと"),
+    SIZE_CATEGORY("ファイルサイズごと")
+}
+
+enum class SizeFilterOption(val displayName: String, val minBytes: Long?, val maxBytes: Long?) {
+    ALL("すべて", null, null),
+    SMALL("小 (<1MB)", null, 1024 * 1024 - 1),
+    MEDIUM("中 (1MB-5MB)", 1024 * 1024, 5 * 1024 * 1024 - 1),
+    LARGE("大 (5MB-20MB)", 5 * 1024 * 1024, 20 * 1024 * 1024 - 1),
+    EXTRA_LARGE("特大 (>20MB)", 20 * 1024 * 1024, null);
+
+    companion object {
+        fun categorize(bytes: Long): String {
+            return when {
+                bytes < 1024 * 1024 -> "小 (<1MB)"
+                bytes < 5 * 1024 * 1024 -> "中 (1MB-5MB)"
+                bytes < 20 * 1024 * 1024 -> "大 (5MB-20MB)"
+                else -> "特大 (>20MB)"
+            }
+        }
+    }
+}
+
 fun getRuleSetValidationErrors(ruleSet: ScanRuleSet): List<String> {
     val errors = mutableListOf<String>()
     if (ruleSet.folderPaths.isEmpty()) {
@@ -75,6 +113,14 @@ fun MainApp() {
     var duplicates by remember { mutableStateOf(listOf<DuplicateGroup>()) }
     var blurryPhotos by remember { mutableStateOf(listOf<Photo>()) }
     var selectedPhoto by remember { mutableStateOf<Photo?>(null) }
+
+    // Filtering, Sorting, Grouping State for Photo Gallery
+    var selectedFolderFilter by remember { mutableStateOf<String?>(null) }
+    var selectedExtensionFilter by remember { mutableStateOf<String?>(null) }
+    var selectedSizeFilter by remember { mutableStateOf(SizeFilterOption.ALL) }
+    var selectedSortField by remember { mutableStateOf(SortField.TAKEN_AT) }
+    var selectedSortOrder by remember { mutableStateOf(SortOrder.DESC) }
+    var selectedGroupBy by remember { mutableStateOf(GroupByOption.NONE) }
 
     // Toast State
     var toastMessage by remember { mutableStateOf<String?>(null) }
@@ -109,13 +155,26 @@ fun MainApp() {
 
     fun refreshPhotos() {
         coroutineScope.launch {
-            photos = ApiService.fetchPhotos()
+            photos = ApiService.fetchPhotos(
+                folderPath = selectedFolderFilter,
+                extension = selectedExtensionFilter,
+                minSize = selectedSizeFilter.minBytes,
+                maxSize = selectedSizeFilter.maxBytes,
+                sortBy = selectedSortField.key,
+                order = selectedSortOrder.key
+            )
             duplicates = ApiService.fetchExactDuplicates()
             blurryPhotos = ApiService.fetchBlurryPhotos()
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(
+        selectedFolderFilter,
+        selectedExtensionFilter,
+        selectedSizeFilter,
+        selectedSortField,
+        selectedSortOrder
+    ) {
         refreshPhotos()
     }
 
@@ -244,7 +303,20 @@ fun MainApp() {
                                         NavItem.PHOTOS -> PhotoGridView(
                                             photos = photos,
                                             selectedPhoto = selectedPhoto,
-                                            onSelectPhoto = { selectedPhoto = it }
+                                            onSelectPhoto = { selectedPhoto = it },
+                                            ruleSets = ruleSets,
+                                            selectedFolderFilter = selectedFolderFilter,
+                                            onFolderFilterChange = { selectedFolderFilter = it },
+                                            selectedExtensionFilter = selectedExtensionFilter,
+                                            onExtensionFilterChange = { selectedExtensionFilter = it },
+                                            selectedSizeFilter = selectedSizeFilter,
+                                            onSizeFilterChange = { selectedSizeFilter = it },
+                                            selectedSortField = selectedSortField,
+                                            onSortFieldChange = { selectedSortField = it },
+                                            selectedSortOrder = selectedSortOrder,
+                                            onSortOrderChange = { selectedSortOrder = it },
+                                            selectedGroupBy = selectedGroupBy,
+                                            onGroupByChange = { selectedGroupBy = it }
                                         )
 
                                         NavItem.DUPLICATES -> DuplicatesView(
@@ -726,36 +798,333 @@ fun RuleSetCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun PhotoGridView(
     photos: List<Photo>,
     selectedPhoto: Photo?,
-    onSelectPhoto: (Photo) -> Unit
+    onSelectPhoto: (Photo) -> Unit,
+    ruleSets: List<ScanRuleSet>,
+    selectedFolderFilter: String?,
+    onFolderFilterChange: (String?) -> Unit,
+    selectedExtensionFilter: String?,
+    onExtensionFilterChange: (String?) -> Unit,
+    selectedSizeFilter: SizeFilterOption,
+    onSizeFilterChange: (SizeFilterOption) -> Unit,
+    selectedSortField: SortField,
+    onSortFieldChange: (SortField) -> Unit,
+    selectedSortOrder: SortOrder,
+    onSortOrderChange: (SortOrder) -> Unit,
+    selectedGroupBy: GroupByOption,
+    onGroupByChange: (GroupByOption) -> Unit
 ) {
+    // Extract available folders and extensions from current photos or ruleSets
+    val availableFolders = remember(photos, ruleSets) {
+        val foldersFromPhotos = photos.map { it.folderPath }
+        val foldersFromRules = ruleSets.flatMap { it.folderPaths }
+        (foldersFromPhotos + foldersFromRules).filter { it.isNotBlank() }.distinct().sorted()
+    }
+
+    val availableExtensions = remember(photos) {
+        photos.map { File(it.filePath).extension.lowercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+    }
+
+    // Dropdown Expansion States
+    var folderMenuExpanded by remember { mutableStateOf(false) }
+    var extMenuExpanded by remember { mutableStateOf(false) }
+    var sizeMenuExpanded by remember { mutableStateOf(false) }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    var groupMenuExpanded by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("写真ギャラリー (${photos.size}枚)", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        // Header Title
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "写真ギャラリー (${photos.size}枚)",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Control Panel: Filters, Sorting, Grouping
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = RoundedCornerShape(8.dp),
+            tonalElevation = 1.dp
+        ) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // 1. Folder Filter Dropdown
+                    Box {
+                        AssistChip(
+                            onClick = { folderMenuExpanded = true },
+                            label = {
+                                Text("フォルダ: ${selectedFolderFilter?.let { File(it).name.ifEmpty { it } } ?: "すべて"}")
+                            },
+                            leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                        )
+                        DropdownMenu(
+                            expanded = folderMenuExpanded,
+                            onDismissRequest = { folderMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("すべてのフォルダ") },
+                                onClick = {
+                                    onFolderFilterChange(null)
+                                    folderMenuExpanded = false
+                                }
+                            )
+                            availableFolders.forEach { folder ->
+                                DropdownMenuItem(
+                                    text = { Text(folder) },
+                                    onClick = {
+                                        onFolderFilterChange(folder)
+                                        folderMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. Extension Filter Dropdown
+                    Box {
+                        AssistChip(
+                            onClick = { extMenuExpanded = true },
+                            label = {
+                                Text("拡張子: ${selectedExtensionFilter?.let { ".$it" } ?: "すべて"}")
+                            },
+                            leadingIcon = { Icon(Icons.Default.Extension, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                        )
+                        DropdownMenu(
+                            expanded = extMenuExpanded,
+                            onDismissRequest = { extMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("すべての拡張子") },
+                                onClick = {
+                                    onExtensionFilterChange(null)
+                                    extMenuExpanded = false
+                                }
+                            )
+                            availableExtensions.forEach { ext ->
+                                DropdownMenuItem(
+                                    text = { Text(".$ext") },
+                                    onClick = {
+                                        onExtensionFilterChange(ext)
+                                        extMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 3. File Size Filter Dropdown
+                    Box {
+                        AssistChip(
+                            onClick = { sizeMenuExpanded = true },
+                            label = {
+                                Text("サイズ: ${selectedSizeFilter.displayName}")
+                            },
+                            leadingIcon = { Icon(Icons.Default.Straighten, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                        )
+                        DropdownMenu(
+                            expanded = sizeMenuExpanded,
+                            onDismissRequest = { sizeMenuExpanded = false }
+                        ) {
+                            SizeFilterOption.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.displayName) },
+                                    onClick = {
+                                        onSizeFilterChange(option)
+                                        sizeMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // 4. Sort Field & Order
+                    Box {
+                        AssistChip(
+                            onClick = { sortMenuExpanded = true },
+                            label = {
+                                Text("ソート: ${selectedSortField.displayName} (${selectedSortOrder.displayName})")
+                            },
+                            leadingIcon = { Icon(Icons.Default.Sort, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                        )
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false }
+                        ) {
+                            SortField.entries.forEach { field ->
+                                SortOrder.entries.forEach { order ->
+                                    DropdownMenuItem(
+                                        text = { Text("${field.displayName} (${order.displayName})") },
+                                        onClick = {
+                                            onSortFieldChange(field)
+                                            onSortOrderChange(order)
+                                            sortMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // 5. Grouping Option Dropdown
+                    Box {
+                        FilterChip(
+                            selected = selectedGroupBy != GroupByOption.NONE,
+                            onClick = { groupMenuExpanded = true },
+                            label = { Text("グループ化: ${selectedGroupBy.displayName}") },
+                            leadingIcon = { Icon(Icons.Default.GridView, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, contentDescription = null) },
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                        )
+                        DropdownMenu(
+                            expanded = groupMenuExpanded,
+                            onDismissRequest = { groupMenuExpanded = false }
+                        ) {
+                            GroupByOption.entries.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option.displayName) },
+                                    onClick = {
+                                        onGroupByChange(option)
+                                        groupMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    // Reset Filter Button if any filter active
+                    if (selectedFolderFilter != null || selectedExtensionFilter != null || selectedSizeFilter != SizeFilterOption.ALL) {
+                        IconButton(
+                            onClick = {
+                                onFolderFilterChange(null)
+                                onExtensionFilterChange(null)
+                                onSizeFilterChange(SizeFilterOption.ALL)
+                            },
+                            modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
+                        ) {
+                            Icon(Icons.Default.FilterListOff, contentDescription = "フィルター解除", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
         if (photos.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("写真が見つかりません。フォルダを追加してスキャンを実行してください。", style = MaterialTheme.typography.bodyLarge)
+                Text("条件に一致する写真が見つかりません。スキャンを実行するかフィルタ条件を緩和してください。", style = MaterialTheme.typography.bodyLarge)
             }
         } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 140.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                items(photos) { photo ->
-                    PhotoCardItem(
-                        photo = photo,
-                        isSelected = selectedPhoto?.filePath == photo.filePath,
-                        onClick = { onSelectPhoto(photo) }
-                    )
+            if (selectedGroupBy == GroupByOption.NONE) {
+                // Flat Grid Display
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 140.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    items(photos) { photo ->
+                        PhotoCardItem(
+                            photo = photo,
+                            isSelected = selectedPhoto?.filePath == photo.filePath,
+                            onClick = { onSelectPhoto(photo) }
+                        )
+                    }
+                }
+            } else {
+                // Grouped Display using LazyColumn + FlowRow / Row items
+                val groupedPhotos = remember(photos, selectedGroupBy) {
+                    when (selectedGroupBy) {
+                        GroupByOption.FOLDER -> photos.groupBy { it.folderPath }
+                        GroupByOption.EXTENSION -> photos.groupBy { File(it.filePath).extension.lowercase().ifEmpty { "なし" } }
+                        GroupByOption.SIZE_CATEGORY -> photos.groupBy { SizeFilterOption.categorize(it.fileSize) }
+                        GroupByOption.NONE -> mapOf("すべての写真" to photos)
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    groupedPhotos.forEach { (groupKey, groupPhotoList) ->
+                        item {
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    val groupTitle = when (selectedGroupBy) {
+                                        GroupByOption.FOLDER -> "📁 フォルダ: $groupKey"
+                                        GroupByOption.EXTENSION -> "📄 拡張子: .$groupKey"
+                                        GroupByOption.SIZE_CATEGORY -> "📏 サイズ: $groupKey"
+                                        else -> groupKey
+                                    }
+                                    Text(
+                                        text = groupTitle,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                    Text(
+                                        text = "${groupPhotoList.size}枚",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                                    )
+                                }
+                            }
+                        }
+
+                        item {
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                groupPhotoList.forEach { photo ->
+                                    Box(modifier = Modifier.size(140.dp)) {
+                                        PhotoCardItem(
+                                            photo = photo,
+                                            isSelected = selectedPhoto?.filePath == photo.filePath,
+                                            onClick = { onSelectPhoto(photo) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
