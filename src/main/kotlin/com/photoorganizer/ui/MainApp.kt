@@ -43,6 +43,20 @@ enum class NavItem(val title: String) {
     BLUR("ピンボケ・ブレ検出")
 }
 
+fun getRuleSetValidationErrors(ruleSet: ScanRuleSet): List<String> {
+    val errors = mutableListOf<String>()
+    if (ruleSet.folderPaths.isEmpty()) {
+        errors.add("対象フォルダが選択されていません。")
+    }
+    if (ruleSet.fileFilterType == "CUSTOM_EXT" && ruleSet.customExtensions.isEmpty()) {
+        errors.add("所定の拡張子が指定されていません。")
+    }
+    if (ruleSet.fileFilterType == "NAME_CONTAINS" && ruleSet.nameSubstring.isBlank()) {
+        errors.add("検索文字列が入力されていません。")
+    }
+    return errors
+}
+
 @Composable
 fun MainApp() {
     var currentNav by remember { mutableStateOf(NavItem.PHOTOS) }
@@ -312,6 +326,9 @@ fun FolderManagementView(
     onStartScan: () -> Unit,
     isScanning: Boolean
 ) {
+    val allErrors = ruleSets.flatMap { getRuleSetValidationErrors(it) }
+    val canStartScan = ruleSets.isNotEmpty() && allErrors.isEmpty() && !isScanning
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -356,9 +373,27 @@ fun FolderManagementView(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        if (allErrors.isNotEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "スキャンを開始するには、設定されていない条件を指定してください (${allErrors.size}件の注意箇所)",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+        }
+
         Button(
             onClick = onStartScan,
-            enabled = ruleSets.any { it.folderPaths.isNotEmpty() } && !isScanning,
+            enabled = canStartScan,
             modifier = Modifier.fillMaxWidth().height(48.dp)
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = null)
@@ -376,8 +411,9 @@ fun RuleSetCard(
     onRemoveRuleSet: () -> Unit
 ) {
     var isExpanded by remember { mutableStateOf(true) }
-    var manualPathInput by remember(ruleSet) { mutableStateOf("") }
     var customExtsText by remember(ruleSet) { mutableStateOf(ruleSet.customExtensions.joinToString(", ")) }
+
+    val errors = getRuleSetValidationErrors(ruleSet)
 
     val detectedExtensions = remember(ruleSet.folderPaths) {
         getExtensionsInDirectories(ruleSet.folderPaths)
@@ -414,6 +450,18 @@ fun RuleSetCard(
                 }
             }
 
+            // Error warnings if any
+            if (errors.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                errors.forEach { err ->
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 8.dp)) {
+                        Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(err, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
             // Summary when collapsed
             if (!isExpanded) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -440,18 +488,6 @@ fun RuleSetCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("対象フォルダパス一覧", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = manualPathInput,
-                        onValueChange = { manualPathInput = it },
-                        label = { Text("追加するフォルダの絶対パス") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Button(
                         onClick = {
                             val path = openDirectoryPickerDialog()
@@ -462,27 +498,14 @@ fun RuleSetCard(
                     ) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("参照")
-                    }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Button(
-                        onClick = {
-                            val p = manualPathInput.trim()
-                            if (p.isNotBlank() && !ruleSet.folderPaths.contains(p)) {
-                                onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths + p))
-                                manualPathInput = ""
-                            }
-                        },
-                        enabled = manualPathInput.isNotBlank()
-                    ) {
-                        Text("追加")
+                        Text("参照 (フォルダを追加)")
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 if (ruleSet.folderPaths.isEmpty()) {
-                    Text("※ フォルダが割り当てられていません。「参照」から追加してください。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    Text("※ フォルダが指定されていません。「参照」ボタンからフォルダを追加してください。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 } else {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         ruleSet.folderPaths.forEach { path ->
@@ -589,7 +612,8 @@ fun RuleSetCard(
                             },
                             label = { Text("拡張子の手入力 (カンマ区切り: jpg, png, webp)") },
                             modifier = Modifier.fillMaxWidth(),
-                            singleLine = true
+                            singleLine = true,
+                            isError = ruleSet.customExtensions.isEmpty()
                         )
                     }
                 }
@@ -603,7 +627,8 @@ fun RuleSetCard(
                         },
                         label = { Text("検索文字列 (例: IMG_)") },
                         modifier = Modifier.fillMaxWidth(),
-                        singleLine = true
+                        singleLine = true,
+                        isError = ruleSet.nameSubstring.isBlank()
                     )
                 }
             }
