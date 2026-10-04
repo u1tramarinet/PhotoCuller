@@ -1,9 +1,13 @@
 package com.photoorganizer.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -20,7 +24,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -30,6 +38,7 @@ import com.photoorganizer.models.Photo
 import com.photoorganizer.models.ScanRuleSet
 import com.photoorganizer.services.ApiService
 import com.photoorganizer.services.ConfigManager
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import java.text.SimpleDateFormat
@@ -67,6 +76,9 @@ fun MainApp() {
     var blurryPhotos by remember { mutableStateOf(listOf<Photo>()) }
     var selectedPhoto by remember { mutableStateOf<Photo?>(null) }
 
+    // Toast State
+    var toastMessage by remember { mutableStateOf<String?>(null) }
+
     // Scan State
     var isScanning by remember { mutableStateOf(false) }
     var isBannerVisible by remember { mutableStateOf(false) }
@@ -75,10 +87,24 @@ fun MainApp() {
     var scanProgressMessage by remember { mutableStateOf("") }
 
     val coroutineScope = rememberCoroutineScope()
+    val focusManager = LocalFocusManager.current
 
-    fun updateAndSaveRuleSets(newRuleSets: List<ScanRuleSet>) {
+    fun showToast(msg: String) {
+        toastMessage = msg
+        coroutineScope.launch {
+            delay(2500)
+            if (toastMessage == msg) {
+                toastMessage = null
+            }
+        }
+    }
+
+    fun updateAndSaveRuleSets(newRuleSets: List<ScanRuleSet>, showToastNotification: Boolean = true) {
         ruleSets = newRuleSets
         ConfigManager.saveRuleSets(newRuleSets)
+        if (showToastNotification) {
+            showToast("設定を更新・保存しました")
+        }
     }
 
     fun refreshPhotos() {
@@ -94,162 +120,197 @@ fun MainApp() {
     }
 
     MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                // Navigation Sidebar / Rail
-                NavigationRail(
-                    modifier = Modifier.width(200.dp).fillMaxHeight(),
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxHeight().fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
-                        verticalArrangement = Arrangement.Top,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "フォト管",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
-                        )
-
-                        NavigationRailItem(
-                            selected = currentNav == NavItem.FOLDERS,
-                            onClick = { currentNav = NavItem.FOLDERS },
-                            icon = { Icon(Icons.Default.Folder, contentDescription = null) },
-                            label = { Text(NavItem.FOLDERS.title, textAlign = TextAlign.Center) },
-                            alwaysShowLabel = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        NavigationRailItem(
-                            selected = currentNav == NavItem.PHOTOS,
-                            onClick = { currentNav = NavItem.PHOTOS; refreshPhotos() },
-                            icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
-                            label = { Text(NavItem.PHOTOS.title, textAlign = TextAlign.Center) },
-                            alwaysShowLabel = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        NavigationRailItem(
-                            selected = currentNav == NavItem.DUPLICATES,
-                            onClick = { currentNav = NavItem.DUPLICATES; refreshPhotos() },
-                            icon = { Icon(Icons.Default.CopyAll, contentDescription = null) },
-                            label = { Text(NavItem.DUPLICATES.title, textAlign = TextAlign.Center) },
-                            alwaysShowLabel = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        NavigationRailItem(
-                            selected = currentNav == NavItem.BLUR,
-                            onClick = { currentNav = NavItem.BLUR; refreshPhotos() },
-                            icon = { Icon(Icons.Default.BlurOn, contentDescription = null) },
-                            label = { Text(NavItem.BLUR.title, textAlign = TextAlign.Center) },
-                            alwaysShowLabel = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures {
+                        focusManager.clearFocus()
                     }
-                }
+                },
+            color = MaterialTheme.colorScheme.background
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    // Navigation Sidebar / Rail
+                    NavigationRail(
+                        modifier = Modifier.width(200.dp).fillMaxHeight(),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxHeight().fillMaxWidth().padding(vertical = 16.dp, horizontal = 8.dp),
+                            verticalArrangement = Arrangement.Top,
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "フォト管",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
+                            )
 
-                HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                            NavigationRailItem(
+                                selected = currentNav == NavItem.FOLDERS,
+                                onClick = { currentNav = NavItem.FOLDERS },
+                                icon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                                label = { Text(NavItem.FOLDERS.title, textAlign = TextAlign.Center) },
+                                alwaysShowLabel = true,
+                                modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
 
-                // Main Content Workspace
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    Column(modifier = Modifier.fillMaxSize()) {
-                        // Scan Progress Indicator Bar
-                        if (isBannerVisible) {
-                            ScanProgressBanner(
-                                isScanning = isScanning,
-                                current = scanProgressCurrent,
-                                total = scanProgressTotal,
-                                message = scanProgressMessage,
-                                onClose = { isBannerVisible = false }
+                            NavigationRailItem(
+                                selected = currentNav == NavItem.PHOTOS,
+                                onClick = { currentNav = NavItem.PHOTOS; refreshPhotos() },
+                                icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
+                                label = { Text(NavItem.PHOTOS.title, textAlign = TextAlign.Center) },
+                                alwaysShowLabel = true,
+                                modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            NavigationRailItem(
+                                selected = currentNav == NavItem.DUPLICATES,
+                                onClick = { currentNav = NavItem.DUPLICATES; refreshPhotos() },
+                                icon = { Icon(Icons.Default.CopyAll, contentDescription = null) },
+                                label = { Text(NavItem.DUPLICATES.title, textAlign = TextAlign.Center) },
+                                alwaysShowLabel = true,
+                                modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand)
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            NavigationRailItem(
+                                selected = currentNav == NavItem.BLUR,
+                                onClick = { currentNav = NavItem.BLUR; refreshPhotos() },
+                                icon = { Icon(Icons.Default.BlurOn, contentDescription = null) },
+                                label = { Text(NavItem.BLUR.title, textAlign = TextAlign.Center) },
+                                alwaysShowLabel = true,
+                                modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand)
                             )
                         }
+                    }
 
-                        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                                when (currentNav) {
-                                    NavItem.FOLDERS -> FolderManagementView(
-                                        ruleSets = ruleSets,
-                                        onAddRuleSet = {
-                                            val nextIndex = ruleSets.size + 1
-                                            updateAndSaveRuleSets(ruleSets + ScanRuleSet(name = "ルールセット $nextIndex"))
-                                        },
-                                        onUpdateRuleSet = { updatedRs ->
-                                            updateAndSaveRuleSets(ruleSets.map { if (it.id == updatedRs.id) updatedRs else it })
-                                        },
-                                        onRemoveRuleSet = { id ->
-                                            updateAndSaveRuleSets(ruleSets.filter { it.id != id })
-                                        },
-                                        onStartScan = {
-                                            isScanning = true
-                                            isBannerVisible = true
-                                            coroutineScope.launch {
-                                                ApiService.startScan(ruleSets).collect { progress ->
-                                                    scanProgressCurrent = progress.current
-                                                    scanProgressTotal = progress.total
-                                                    scanProgressMessage = progress.message
-                                                    if (progress.type == "complete" || progress.type == "error") {
-                                                        isScanning = false
-                                                        refreshPhotos()
+                    HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
+
+                    // Main Content Workspace
+                    Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            // Scan Progress Indicator Bar
+                            if (isBannerVisible) {
+                                ScanProgressBanner(
+                                    isScanning = isScanning,
+                                    current = scanProgressCurrent,
+                                    total = scanProgressTotal,
+                                    message = scanProgressMessage,
+                                    onClose = { isBannerVisible = false }
+                                )
+                            }
+
+                            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                                    when (currentNav) {
+                                        NavItem.FOLDERS -> FolderManagementView(
+                                            ruleSets = ruleSets,
+                                            onAddRuleSet = {
+                                                val nextIndex = ruleSets.size + 1
+                                                updateAndSaveRuleSets(ruleSets + ScanRuleSet(name = "ルールセット $nextIndex"))
+                                            },
+                                            onUpdateRuleSet = { updatedRs ->
+                                                updateAndSaveRuleSets(ruleSets.map { if (it.id == updatedRs.id) updatedRs else it })
+                                            },
+                                            onRemoveRuleSet = { id ->
+                                                updateAndSaveRuleSets(ruleSets.filter { it.id != id })
+                                            },
+                                            onStartScan = {
+                                                isScanning = true
+                                                isBannerVisible = true
+                                                coroutineScope.launch {
+                                                    ApiService.startScan(ruleSets).collect { progress ->
+                                                        scanProgressCurrent = progress.current
+                                                        scanProgressTotal = progress.total
+                                                        scanProgressMessage = progress.message
+                                                        if (progress.type == "complete" || progress.type == "error") {
+                                                            isScanning = false
+                                                            refreshPhotos()
+                                                        }
                                                     }
                                                 }
+                                            },
+                                            isScanning = isScanning
+                                        )
+
+                                        NavItem.PHOTOS -> PhotoGridView(
+                                            photos = photos,
+                                            selectedPhoto = selectedPhoto,
+                                            onSelectPhoto = { selectedPhoto = it }
+                                        )
+
+                                        NavItem.DUPLICATES -> DuplicatesView(
+                                            duplicates = duplicates,
+                                            onSelectPhoto = { selectedPhoto = it },
+                                            onTrashPhoto = { photo ->
+                                                coroutineScope.launch {
+                                                    ApiService.trashPhoto(photo.filePath)
+                                                    refreshPhotos()
+                                                }
                                             }
-                                        },
-                                        isScanning = isScanning
-                                    )
+                                        )
 
-                                    NavItem.PHOTOS -> PhotoGridView(
-                                        photos = photos,
-                                        selectedPhoto = selectedPhoto,
-                                        onSelectPhoto = { selectedPhoto = it }
-                                    )
+                                        NavItem.BLUR -> BlurView(
+                                            blurryPhotos = blurryPhotos,
+                                            onSelectPhoto = { selectedPhoto = it },
+                                            onTrashPhoto = { photo ->
+                                                coroutineScope.launch {
+                                                    ApiService.trashPhoto(photo.filePath)
+                                                    refreshPhotos()
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
 
-                                    NavItem.DUPLICATES -> DuplicatesView(
-                                        duplicates = duplicates,
-                                        onSelectPhoto = { selectedPhoto = it },
-                                        onTrashPhoto = { photo ->
+                                // Photo Detail Inspector Pane
+                                if (selectedPhoto != null) {
+                                    HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                                    PhotoDetailInspector(
+                                        photo = selectedPhoto!!,
+                                        onClose = { selectedPhoto = null },
+                                        onTrash = { photo ->
                                             coroutineScope.launch {
                                                 ApiService.trashPhoto(photo.filePath)
-                                                refreshPhotos()
-                                            }
-                                        }
-                                    )
-
-                                    NavItem.BLUR -> BlurView(
-                                        blurryPhotos = blurryPhotos,
-                                        onSelectPhoto = { selectedPhoto = it },
-                                        onTrashPhoto = { photo ->
-                                            coroutineScope.launch {
-                                                ApiService.trashPhoto(photo.filePath)
+                                                selectedPhoto = null
                                                 refreshPhotos()
                                             }
                                         }
                                     )
                                 }
                             }
+                        }
+                    }
+                }
 
-                            // Photo Detail Inspector Pane
-                            if (selectedPhoto != null) {
-                                HorizontalDivider(modifier = Modifier.fillMaxHeight().width(1.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                                PhotoDetailInspector(
-                                    photo = selectedPhoto!!,
-                                    onClose = { selectedPhoto = null },
-                                    onTrash = { photo ->
-                                        coroutineScope.launch {
-                                            ApiService.trashPhoto(photo.filePath)
-                                            selectedPhoto = null
-                                            refreshPhotos()
-                                        }
-                                    }
-                                )
-                            }
+                // Settings Update Toast Overlay
+                AnimatedVisibility(
+                    visible = toastMessage != null,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
+                ) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.inverseSurface,
+                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
+                        shape = RoundedCornerShape(8.dp),
+                        shadowElevation = 6.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Check, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(text = toastMessage ?: "", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
@@ -300,7 +361,7 @@ fun ScanProgressBanner(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
-            IconButton(onClick = onClose) {
+            IconButton(onClick = onClose, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                 Icon(Icons.Default.Close, contentDescription = "閉じる")
             }
         }
@@ -361,7 +422,7 @@ fun FolderManagementView(
                 Text("写真ファイルスキャンルール設定", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text("対象フォルダと抽出フィルタの組み合わせをルールセットとして管理できます。", style = MaterialTheme.typography.bodyMedium)
             }
-            Button(onClick = onAddRuleSet) {
+            Button(onClick = onAddRuleSet, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(4.dp))
                 Text("新しいルールセットを追加")
@@ -416,7 +477,7 @@ fun FolderManagementView(
         Button(
             onClick = onStartScan,
             enabled = canStartScan,
-            modifier = Modifier.fillMaxWidth().height(48.dp)
+            modifier = Modifier.fillMaxWidth().height(48.dp).pointerHoverIcon(if (canStartScan) PointerIcon.Hand else PointerIcon.Default)
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
@@ -461,13 +522,13 @@ fun RuleSetCard(
                     singleLine = true
                 )
                 Spacer(modifier = Modifier.width(8.dp))
-                IconButton(onClick = { isExpanded = !isExpanded }) {
+                IconButton(onClick = { isExpanded = !isExpanded }, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                     Icon(
                         if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
                         contentDescription = "開閉"
                     )
                 }
-                IconButton(onClick = onRemoveRuleSet) {
+                IconButton(onClick = onRemoveRuleSet, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                     Icon(Icons.Default.Delete, contentDescription = "削除", tint = MaterialTheme.colorScheme.error)
                 }
             }
@@ -516,7 +577,8 @@ fun RuleSetCard(
                             if (path != null && !ruleSet.folderPaths.contains(path)) {
                                 onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths + path))
                             }
-                        }
+                        },
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                     ) {
                         Icon(Icons.Default.FolderOpen, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
@@ -540,7 +602,7 @@ fun RuleSetCard(
                                 Text(path, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                                 IconButton(
                                     onClick = { onUpdateRuleSet(ruleSet.copy(folderPaths = ruleSet.folderPaths - path)) },
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(24.dp).pointerHoverIcon(PointerIcon.Hand)
                                 ) {
                                     Icon(Icons.Default.Close, contentDescription = "削除", tint = MaterialTheme.colorScheme.outline)
                                 }
@@ -559,14 +621,16 @@ fun RuleSetCard(
                     SegmentedButton(
                         selected = ruleSet.includeSubfolders,
                         onClick = { onUpdateRuleSet(ruleSet.copy(includeSubfolders = true)) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                     ) {
                         Text("ファイルと子フォルダ")
                     }
                     SegmentedButton(
                         selected = !ruleSet.includeSubfolders,
                         onClick = { onUpdateRuleSet(ruleSet.copy(includeSubfolders = false)) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                     ) {
                         Text("ファイルのみ")
                     }
@@ -582,21 +646,24 @@ fun RuleSetCard(
                     SegmentedButton(
                         selected = ruleSet.fileFilterType == "ALL",
                         onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "ALL")) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3)
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                     ) {
                         Text("すべてのファイル")
                     }
                     SegmentedButton(
                         selected = ruleSet.fileFilterType == "CUSTOM_EXT",
                         onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "CUSTOM_EXT")) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3)
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                     ) {
                         Text("所定の拡張子のみ")
                     }
                     SegmentedButton(
                         selected = ruleSet.fileFilterType == "NAME_CONTAINS",
                         onClick = { onUpdateRuleSet(ruleSet.copy(fileFilterType = "NAME_CONTAINS")) },
-                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3)
+                        shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                     ) {
                         Text("特定文字列を含む")
                     }
@@ -618,7 +685,8 @@ fun RuleSetCard(
                                             customExtsText = newExts.joinToString(", ")
                                             onUpdateRuleSet(ruleSet.copy(customExtensions = newExts))
                                         },
-                                        label = { Text(".$ext") }
+                                        label = { Text(".$ext") },
+                                        modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)
                                     )
                                 }
                             }
@@ -701,6 +769,7 @@ fun PhotoCardItem(photo: Photo, isSelected: Boolean, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .aspectRatio(1f)
+            .pointerHoverIcon(PointerIcon.Hand)
             .clickable { onClick() }
             .border(2.dp, borderColor, RoundedCornerShape(8.dp)),
         shape = RoundedCornerShape(8.dp)
@@ -760,7 +829,10 @@ fun DuplicatesView(
                                         PhotoCardItem(photo = photo, isSelected = false, onClick = { onSelectPhoto(photo) })
                                         IconButton(
                                             onClick = { onTrashPhoto(photo) },
-                                            modifier = Modifier.align(Alignment.TopEnd).background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .background(Color.Black.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                                .pointerHoverIcon(PointerIcon.Hand)
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = "ゴミ箱へ移動", tint = Color.Red)
                                         }
@@ -827,7 +899,7 @@ fun PhotoDetailInspector(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text("写真の詳細情報", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            IconButton(onClick = onClose) {
+            IconButton(onClick = onClose, modifier = Modifier.pointerHoverIcon(PointerIcon.Hand)) {
                 Icon(Icons.Default.Close, contentDescription = "閉じる")
             }
         }
@@ -857,7 +929,7 @@ fun PhotoDetailInspector(
         Button(
             onClick = { onTrash(photo) },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().pointerHoverIcon(PointerIcon.Hand)
         ) {
             Icon(Icons.Default.Delete, contentDescription = null)
             Spacer(modifier = Modifier.width(8.dp))
